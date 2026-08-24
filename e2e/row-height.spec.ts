@@ -244,6 +244,37 @@ test("wrapped rows hang from the top; fixed and exact ones stay centred", async 
   expect(await align()).toBe("middle")
 })
 
+test("the header keeps its own height, whatever the rows are doing", async ({ page }) => {
+  /*
+    `rowHeight` sets the row token, and the header used to read the same one —
+    so a table of 64px rows got a 64px header, and a short one got a header too
+    small for the sort and menu controls. Density still moves both, because
+    that is what density is.
+  */
+  const table = configured(page)
+  const header = () =>
+    table.root.locator("thead tr").evaluate((row) => Math.round(row.getBoundingClientRect().height))
+
+  const resting = await header()
+
+  for (const label of ["Auto", "28px", "64px"]) {
+    await page.getByRole("button", { name: label, exact: true }).click()
+    expect(await header()).toBe(resting)
+  }
+
+  // The controls inside it are still the height of the header, not the row.
+  await page.getByRole("button", { name: "28px", exact: true }).click()
+  const inner = await table.root
+    .locator("thead .tpz-th-button")
+    .first()
+    .evaluate((node) => Math.round(node.getBoundingClientRect().height))
+  expect(inner).toBeGreaterThan(20)
+
+  // Density is the knob that does move it.
+  await page.getByRole("button", { name: "Relaxed", exact: true }).click()
+  expect(await header()).toBeGreaterThan(resting)
+})
+
 test("density still means something under auto height", async ({ page }) => {
   const table = configured(page)
   await page.getByRole("button", { name: "Auto", exact: true }).click()

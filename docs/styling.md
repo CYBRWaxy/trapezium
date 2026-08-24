@@ -24,7 +24,7 @@ Every value is a CSS custom property on `.tpz`. Set them anywhere that wins the 
 
 **Colour** — `--tpz-bg` `--tpz-fg` `--tpz-surface` `--tpz-surface-fg` `--tpz-muted` `--tpz-muted-fg` `--tpz-accent` `--tpz-accent-fg` `--tpz-primary` `--tpz-primary-fg` `--tpz-border` `--tpz-input` `--tpz-ring` `--tpz-success` `--tpz-warning` `--tpz-danger`
 
-**Shape** — `--tpz-radius` `--tpz-radius-sm` `--tpz-radius-md` `--tpz-row-height` `--tpz-cell-padding-x` `--tpz-cell-padding-y` `--tpz-col-min-width` `--tpz-col-max-width` `--tpz-lead-min-width` `--tpz-lead-max-width` `--tpz-select-width`
+**Shape** — `--tpz-radius` `--tpz-radius-sm` `--tpz-radius-md` `--tpz-row-height` `--tpz-header-height` `--tpz-cell-padding-x` `--tpz-cell-padding-y` `--tpz-col-min-width` `--tpz-col-max-width` `--tpz-lead-min-width` `--tpz-lead-max-width` `--tpz-select-width`
 
 **Type** — `--tpz-font-sans` `--tpz-font-mono` `--tpz-text-header` `--tpz-text-cell` `--tpz-text-cell-leading` `--tpz-text-ui`
 
@@ -164,6 +164,14 @@ a particular number of lines regardless of the row, say so:
 Wrapped rows hang from the top, so the first line of every column lines up with
 the first line of the others. `fixed` and exact rows stay vertically centred,
 the way every other row in the library is.
+
+`rowHeight` is about rows: the header keeps its own height and does not follow
+it, or a table of 64px rows would carry a 64px header. Density moves both, which
+is the point of density. To size the header on its own, set its token:
+
+```css
+.tpz { --tpz-header-height: 44px; }
+```
 
 ### With append pagination
 

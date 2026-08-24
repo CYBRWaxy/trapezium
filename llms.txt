@@ -59,7 +59,8 @@ They differ only in where the height comes from: "auto" grows each row to its ta
 --tpz-row-height as the floor, a number gives them all that height and ends what will not fit in an
 ellipsis, on however many lines the height allows (the count is worked out in CSS, nothing is
 measured). Only "fixed" truncates to one line. Wrapped rows align to the top; fixed and exact rows
-stay centred. Per column: wrap:false keeps one line whichever wrapping mode is on, wrap:true wraps,
+stay centred. The header has its own --tpz-header-height and does not follow rowHeight; density
+moves both. Per column: wrap:false keeps one line whichever wrapping mode is on, wrap:true wraps,
 wrap:3 wraps and stops after three lines.
 
 Append pagination ("loadMore", "infinite") keeps every page loaded so far on screen and renders only
@@ -183,7 +184,7 @@ table works with no client JavaScript.
 ## Styling
 
 CSS custom properties on `.tpz` (--tpz-surface, --tpz-muted, --tpz-border, --tpz-primary,
---tpz-row-height, --tpz-font-mono, …). Dark mode follows the page's color-scheme, or `.dark` /
+--tpz-row-height, --tpz-header-height, --tpz-font-mono, …). Dark mode follows the page's color-scheme, or `.dark` /
 [data-theme="dark"] on an ancestor, or theme="dark" on the table.
 classNames={{ root, frame, toolbar, search, scroll, table, thead, tbody, headerRow, headerCell, row,
 cell, selectCell, pagination, empty, footer }} adds classes; `unstyled` drops the defaults. Same in

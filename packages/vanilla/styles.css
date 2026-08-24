@@ -57,6 +57,16 @@
   --tpz-radius-md: calc(var(--tpz-radius) - 2px);
 
   --tpz-row-height: 2rem;
+  /*
+    The header's own, rather than the row's.
+
+    It is given a value at every density instead of defaulting to
+    `--tpz-row-height`, and that is the whole point: `rowHeight` sets the row
+    token, and a header that borrowed it came out 64px tall on a table of 64px
+    rows — or short enough at 20px to start clipping the sort and menu
+    controls. Density still moves both, because density is meant to.
+  */
+  --tpz-header-height: 2rem;
   --tpz-cell-padding-x: 0.5rem;
   /* Only used by cells that wrap: a fixed-height row is centred, not padded. */
   --tpz-cell-padding-y: 0.375rem;
@@ -196,10 +206,12 @@
 
 .tpz[data-density="compact"] {
   --tpz-row-height: 1.75rem;
+  --tpz-header-height: 1.75rem;
 }
 
 .tpz[data-density="relaxed"] {
   --tpz-row-height: 2.5rem;
+  --tpz-header-height: 2.5rem;
   --tpz-cell-padding-x: 0.75rem;
   --tpz-text-cell: 0.75rem;
 }
@@ -266,7 +278,6 @@
 
 .tpz-th,
 .tpz-td {
-  height: var(--tpz-row-height);
   max-width: var(--tpz-col-max-width);
   min-width: var(--tpz-col-min-width);
   overflow: hidden;
@@ -276,6 +287,14 @@
   text-overflow: ellipsis;
   vertical-align: middle;
   white-space: nowrap;
+}
+
+.tpz-td {
+  height: var(--tpz-row-height);
+}
+
+.tpz-th {
+  height: var(--tpz-header-height);
 }
 
 .tpz-tr > :last-child {
@@ -532,7 +551,7 @@
 
 .tpz-th-inner {
   display: flex;
-  height: var(--tpz-row-height);
+  height: var(--tpz-header-height);
   min-width: 0;
   align-items: center;
 }
@@ -556,7 +575,7 @@
 
 .tpz-th-button {
   display: flex;
-  height: var(--tpz-row-height);
+  height: var(--tpz-header-height);
   min-width: 0;
   flex: 1;
   align-items: center;
@@ -1382,7 +1401,7 @@
    the header sorts and a click on the chevron opens what else the column can do. */
 .tpz-th-menu {
   display: flex;
-  height: var(--tpz-row-height);
+  height: var(--tpz-header-height);
   flex: none;
   align-items: center;
   border: 0;

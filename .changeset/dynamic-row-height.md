@@ -27,3 +27,7 @@ rebuild all of them to add one page. Now only the new rows are rendered: the
 rows already there keep their elements, their cell renderers are not re-run,
 the header is not replaced and the scroll position is not disturbed. Selecting a
 row updates that row rather than the table around it.
+
+The header now has a height of its own, `--tpz-header-height`, rather than
+reading the row's — a table of 64px rows was getting a 64px header, and a short
+one a header too small for its own controls. Density still moves both.
