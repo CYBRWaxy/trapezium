@@ -25,6 +25,7 @@ Trapezium is the one that is beautiful out of the box, configured in five lines,
 - **Plug your data straight in.** A Postgres row, a Supabase response, a REST payload, a Prisma model. No mapping layer, no wrapper types, dotted paths for nested fields.
 - **Real filtering and search.** Per-column filters that suit the column's type, including a set filter built from the values actually present, plus global search across everything.
 - **Four kinds of pagination.** Numbered, previous/next, load more, infinite scroll. One prop.
+- **Rows that size themselves.** `rowHeight="auto"` and each row is as tall as its tallest cell — prose, tags, a whole component from a cell renderer. No measuring pass, because a real `<table>` already knows. Appending a page leaves every row above it untouched.
 - **Server or client.** The same component sorts and pages your array, or tells you what to fetch.
 - **Server rendering that actually works.** Correct on the first paint, no effects, no layout shift, and optionally no client JavaScript at all.
 - **Styled by CSS variables**, so it matches your app by overriding a few tokens — or hand it Tailwind classes per slot and take over completely.
@@ -117,6 +118,12 @@ without the OS-driven theme switching. See
 MIT.
 
 ## Working on it
+
+Node 22, pinned by `.nvmrc` and by `use-node-version` in `.npmrc` — so `pnpm`
+runs on it whatever your shell is set to, and you do not have to think about it.
+Below 20.19 the DOM tests do not run at all: jsdom needs `require(ESM)`, and
+without it every React, Vue, Svelte and vanilla test file fails to load while
+`pnpm test` still reports the core's as passing.
 
 ```sh
 pnpm install

@@ -25,8 +25,15 @@ import type {
 } from "./types.js"
 import { getPath, humanise, toSelectOptions } from "./util.js"
 
-/** How many rows are sampled when a column's type has to be inferred. */
-const SAMPLE_SIZE = 50
+/**
+ * How many rows are sampled when a column's type has to be inferred.
+ *
+ * Exported because a renderer that memoises needs to know it: past this many
+ * rows, adding more cannot change a column, so the columns need not be
+ * resolved again — which is what makes appending a page to a long list cheap.
+ */
+export const COLUMN_SAMPLE_SIZE = 50
+const SAMPLE_SIZE = COLUMN_SAMPLE_SIZE
 
 /** A column, or just the key of one. */
 export type ColumnInput<TRow = AnyRow, TNode = unknown> = ColumnDef<TRow, TNode> | (keyof TRow & string) | string

@@ -1125,3 +1125,184 @@ describe("options that change while the table is running", () => {
     expect(cells().map((row) => row[0])).toEqual(["Zoe", "Tom", "Ada"])
   })
 })
+
+/**
+ * Row height, and what it costs to add a page.
+ *
+ * jsdom has no layout, so how tall a row ends up is not observable here — the
+ * stylesheet decides that, and the e2e suite measures it in a real browser.
+ * What is observable, and what actually goes wrong, is how much of the table a
+ * render throws away. These assert on element identity: a `<tr>` that is still
+ * the same object was not rebuilt.
+ */
+describe("row height", () => {
+  const many = Array.from({ length: 100 }, (_, index) => ({
+    id: String(index),
+    name: `P${String(index)}`,
+  }))
+
+  function rows() {
+    return [...host.querySelectorAll("tbody tr")]
+  }
+
+  it("says nothing by default, so the fixed-height stylesheet applies", () => {
+    createTable(host, { data: people })
+    expect(host.querySelector<HTMLElement>(".tpz")!.dataset["rowHeight"]).toBeUndefined()
+  })
+
+  it("marks the table when rows size themselves", () => {
+    createTable(host, { data: people, rowHeight: "auto" })
+    expect(host.querySelector<HTMLElement>(".tpz")!.dataset["rowHeight"]).toBe("auto")
+  })
+
+  it("sets the height token and marks the table exact when given a number", () => {
+    const table = createTable(host, { data: people, rowHeight: 56 })
+    const root = host.querySelector<HTMLElement>(".tpz")!
+
+    expect(root.style.getPropertyValue("--tpz-row-height")).toBe("56px")
+    expect(root.dataset["rowHeight"]).toBe("exact")
+
+    // And gives both back when the caller changes their mind.
+    table.setOptions({ rowHeight: "fixed" })
+    expect(root.style.getPropertyValue("--tpz-row-height")).toBe("")
+    expect(root.dataset["rowHeight"]).toBeUndefined()
+  })
+
+  it("marks a column told to wrap, one told not to, and clamps one given a count", () => {
+    createTable(host, {
+      data: people,
+      rowHeight: "auto",
+      columns: [{ key: "name", wrap: false }, { key: "plan", wrap: true }, { key: "joined", wrap: 3 }],
+    })
+
+    const [name, plan, joined] = [...host.querySelectorAll("tbody tr:first-child td")]
+    expect(name?.getAttribute("data-wrap")).toBe("false")
+    expect(plan?.getAttribute("data-wrap")).toBe("true")
+    expect(joined?.getAttribute("data-wrap")).toBe("true")
+
+    const clamp = joined?.querySelector<HTMLElement>(".tpz-clamp")
+    expect(clamp?.style.getPropertyValue("--tpz-cell-lines")).toBe("3")
+    expect(clamp?.textContent?.trim()).not.toBe("")
+  })
+
+  /*
+    The bug this whole path exists for: an infinite list holds every page
+    loaded so far, and reaching the sentinel used to rebuild all of them.
+  */
+  it("adds an appended page without rebuilding the rows already on screen", () => {
+    const table = createTable(host, {
+      data: many,
+      getRowId: (row) => row.id,
+      pagination: { mode: "loadMore", pageSize: 10 },
+    })
+
+    const first = rows()
+    expect(first).toHaveLength(10)
+
+    table.setState({ page: 2 })
+
+    const second = rows()
+    expect(second).toHaveLength(20)
+    // The same ten elements, in the same places, untouched.
+    expect(second.slice(0, 10)).toEqual(first)
+    expect(second[10]?.textContent).toContain("P10")
+  })
+
+  it("keeps the header alive across an append, so focus survives it", () => {
+    const table = createTable(host, {
+      data: many,
+      getRowId: (row) => row.id,
+      pagination: { mode: "loadMore", pageSize: 10 },
+    })
+
+    const header = host.querySelector("thead tr")
+    table.setState({ page: 2 })
+    expect(host.querySelector("thead tr")).toBe(header)
+  })
+
+  it("selects every row loaded so far, not the page the header was built with", () => {
+    const table = createTable(host, {
+      data: many,
+      getRowId: (row) => row.id,
+      selection: "multiple",
+      pagination: { mode: "loadMore", pageSize: 10 },
+    })
+
+    table.setState({ page: 3 })
+    expect(rows()).toHaveLength(30)
+
+    host.querySelector<HTMLInputElement>("thead .tpz-checkbox")!.click()
+    expect(host.querySelectorAll("tbody tr[data-selected]")).toHaveLength(30)
+  })
+
+  it("marks a selected row without rebuilding the table around it", () => {
+    createTable(host, {
+      data: many,
+      getRowId: (row) => row.id,
+      selection: "multiple",
+      pagination: { mode: "loadMore", pageSize: 10 },
+    })
+
+    const before = rows()
+    before[4]!.querySelector<HTMLInputElement>(".tpz-checkbox")!.click()
+
+    expect(rows()).toEqual(before)
+    expect((before[4] as HTMLElement).dataset["selected"]).toBe("true")
+    expect(host.querySelectorAll("tbody tr[data-selected]")).toHaveLength(1)
+
+    // And clears it again, still without a rebuild.
+    before[4]!.querySelector<HTMLInputElement>(".tpz-checkbox")!.click()
+    expect(rows()).toEqual(before)
+    expect((before[4] as HTMLElement).dataset["selected"]).toBeUndefined()
+  })
+
+  it("rebuilds when the rows themselves changed rather than grew", () => {
+    const table = createTable(host, { data: people, columns: ["name", "plan"] })
+    const before = rows()
+
+    // Sorting is not an append, whatever the ids say.
+    table.setState({ sort: [{ key: "name", direction: "desc" }] })
+    expect(cells().map((row) => row[0])).toEqual(["Zoe", "Tom", "Ada"])
+    expect(rows()[0]).not.toBe(before[0])
+  })
+
+  it("rebuilds when a row is replaced but keeps its id", () => {
+    const table = createTable(host, { data: people, getRowId: (row) => row.id, columns: ["name"] })
+
+    table.setData([{ ...people[0]!, name: "Ada Lovelace" }, ...people.slice(1)])
+    expect(cells()[0]?.[0]).toBe("Ada Lovelace")
+  })
+
+  it("marks the right row when an error is sitting above them", () => {
+    /*
+      An error renders a row of its own, above the data. Anything that finds a
+      row by counting the body's children is off by one from there down — so
+      the rows are held onto directly instead.
+    */
+    createTable(host, {
+      data: many,
+      getRowId: (row) => row.id,
+      selection: "multiple",
+      error: "Could not reach the server",
+      pagination: { mode: "loadMore", pageSize: 10 },
+    })
+
+    const dataRows = [...host.querySelectorAll("tbody tr")].filter((row) =>
+      row.querySelector(".tpz-checkbox"),
+    )
+    expect(dataRows).toHaveLength(10)
+
+    dataRows[4]!.querySelector<HTMLInputElement>(".tpz-checkbox")!.click()
+    expect((dataRows[4] as HTMLElement).dataset["selected"]).toBe("true")
+    expect(host.querySelectorAll("tbody tr[data-selected]")).toHaveLength(1)
+  })
+
+  it("rebuilds when the columns change", () => {
+    const table = createTable(host, { data: people, columns: ["name"] })
+    expect(headers()).toHaveLength(1)
+
+    table.setOptions({ columns: ["name", "plan"] })
+    expect(headers()).toHaveLength(2)
+    expect(cells()[0]).toHaveLength(2)
+  })
+})
