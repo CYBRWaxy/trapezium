@@ -278,3 +278,96 @@ describe("appending a page", () => {
     expect(container.querySelectorAll("tbody tr[data-selected]")).toHaveLength(30)
   })
 })
+
+/**
+ * Server rendering.
+ *
+ * The claim this feature is built on is that a row sizes itself with no
+ * measuring pass — and the test of that claim is a server, which has no layout
+ * to measure and must still produce the finished markup. Everything the mode
+ * needs is decided from the props: an attribute on the root, a custom property
+ * for the height, and the element that bounds a cell. Nothing waits for an
+ * effect, so there is nothing for hydration to disagree with.
+ */
+describe("on a server", () => {
+  const modes = [
+    { name: "fixed", prop: "fixed" as const, attribute: null },
+    { name: "auto", prop: "auto" as const, attribute: "auto" },
+    { name: "a number", prop: 72, attribute: "exact" },
+  ]
+
+  it.each(modes)("renders $name completely in the markup", async ({ prop, attribute }) => {
+    const { renderToString } = await import("react-dom/server")
+
+    const html = renderToString(
+      <Table
+        data={notes}
+        rowHeight={prop}
+        columns={[{ key: "title", wrap: false }, { key: "body", wrap: 3 }]}
+      />,
+    )
+
+    if (attribute === null) expect(html).not.toContain("data-row-height")
+    else expect(html).toContain(`data-row-height="${attribute}"`)
+
+    if (typeof prop === "number") expect(html).toContain(`--tpz-row-height:${String(prop)}px`)
+
+    // The bounding element is in the markup, not added by an effect later.
+    if (attribute === "exact") expect(html).toContain("tpz-fit")
+    expect(html).toContain("tpz-clamp")
+    expect(html).toContain('data-wrap="false"')
+  })
+
+  it.each(modes)("hydrates $name without a mismatch", async ({ prop }) => {
+    const { renderToString } = await import("react-dom/server")
+    const { hydrateRoot } = await import("react-dom/client")
+
+    const element = (
+      <Table
+        data={notes}
+        rowHeight={prop}
+        selection
+        columns={[{ key: "title", wrap: false }, { key: "body", wrap: 2 }]}
+      />
+    )
+
+    const container = document.createElement("div")
+    container.innerHTML = renderToString(element)
+    document.body.append(container)
+
+    /*
+      `onRecoverableError` is where React reports a hydration mismatch — it
+      patches the DOM up and carries on, so a test watching only `console.error`
+      passes whether or not the markup agreed. Both are watched here; the
+      callback is the one that means anything.
+    */
+    const recovered: string[] = []
+    const errors: unknown[] = []
+    const spy = vi.spyOn(console, "error").mockImplementation((...args) => errors.push(args))
+
+    await act(async () => {
+      hydrateRoot(container, element, {
+        onRecoverableError: (error) => recovered.push(String(error)),
+      })
+    })
+
+    spy.mockRestore()
+    container.remove()
+
+    expect(recovered).toEqual([])
+    expect(errors).toEqual([])
+  })
+
+  it("puts nothing in the markup that a browser has to correct", async () => {
+    const { renderToString } = await import("react-dom/server")
+    const html = renderToString(<Table data={notes} rowHeight={72} />)
+
+    /*
+      A measured value would have to arrive as a pixel offset on a cell, which
+      is how the frozen columns work — they are the one thing here that does
+      wait for layout, and they are absent until a caller pins something.
+    */
+    expect(html).not.toContain("data-pin")
+    expect(html).not.toContain("ResizeObserver")
+  })
+})
