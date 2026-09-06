@@ -282,3 +282,99 @@ describe("the row-height switch", () => {
     expect(host.querySelector(".tpz")?.getAttribute("data-density")).toBe("relaxed")
   })
 })
+
+describe("selection options", () => {
+  it("disables the rows that cannot be selected, and skips them from the header", async () => {
+    const onSelection = vi.fn()
+    const host = mount(
+      defineComponent(() => () =>
+        h(Table, {
+          data: people,
+          columns: ["name"],
+          selection: { isSelectable: (row: Person) => row.plan === "pro" },
+          onSelectionChange: onSelection,
+        }),
+      ),
+    )
+    await nextTick()
+
+    const boxes = [...host.querySelectorAll<HTMLInputElement>("tbody .tpz-select-cell input")]
+    expect(boxes.map((box) => box.disabled)).toEqual([false, true])
+
+    host.querySelector<HTMLInputElement>("thead .tpz-select-cell input")!.click()
+    expect(onSelection).toHaveBeenCalledWith(["1"], [people[0]])
+  })
+})
+
+describe("slots", () => {
+  it("teleports the toolbar slot into the toolbar, and keeps it reactive", async () => {
+    const count = ref(0)
+    const host = mount(
+      defineComponent(() => () =>
+        h(Table, { data: people, search: true }, { toolbar: () => h("button", { class: "mine" }, `New (${String(count.value)})`) }),
+      ),
+    )
+    await nextTick()
+
+    const button = host.querySelector(".tpz-toolbar .mine")
+    expect(button?.textContent).toBe("New (0)")
+
+    count.value = 2
+    await nextTick()
+    expect(host.querySelector(".tpz-toolbar .mine")?.textContent).toBe("New (2)")
+  })
+
+  it("fills the append row, the footer and the empty state", async () => {
+    const host = mount(
+      defineComponent(() => () =>
+        h(
+          Table,
+          { data: [] as Person[], columns: ["name"] },
+          {
+            appendRow: () => h("a", { href: "/new" }, "Add one"),
+            footer: () => "2 people",
+            empty: () => h("p", { class: "nothing" }, "No people yet"),
+          },
+        ),
+      ),
+    )
+    await nextTick()
+
+    expect(host.querySelector("tbody tr:last-child a")?.textContent).toBe("Add one")
+    expect(host.querySelector(".tpz-footer")?.textContent).toBe("2 people")
+    expect(host.querySelector("tbody .nothing")?.textContent).toBe("No people yet")
+    expect(host.querySelector(".tpz-state")).toBeNull()
+  })
+})
+
+describe("presentation props", () => {
+  it("passes the class overrides and the caption through", async () => {
+    const host = mount(
+      defineComponent(() => () =>
+        h(Table, { data: people, columns: ["name"], className: "mine", classNames: { row: "hover" }, caption: "People" }),
+      ),
+    )
+    await nextTick()
+
+    expect(host.querySelector(".tpz")?.className).toBe("tpz mine")
+    expect(host.querySelector("tbody tr")?.className).toBe("tpz-tr hover")
+    expect(host.querySelector("caption")?.textContent).toBe("People")
+  })
+
+  it("follows a prop that used to be set once, like maxHeight or export", async () => {
+    const maxHeight = ref<number | undefined>(undefined)
+    const exportOn = ref(false)
+    const host = mount(
+      defineComponent(() => () => h(Table, { data: people, maxHeight: maxHeight.value, export: exportOn.value })),
+    )
+    await nextTick()
+    expect(host.querySelector('[aria-label="Export"]')).toBeNull()
+
+    maxHeight.value = 300
+    exportOn.value = true
+    await nextTick()
+
+    expect(host.querySelector<HTMLElement>(".tpz")?.style.getPropertyValue("--tpz-max-height")).toBe("300px")
+    expect(host.querySelector('[aria-label="Export"]')).toBeTruthy()
+  })
+})

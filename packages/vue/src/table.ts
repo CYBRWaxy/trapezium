@@ -1,4 +1,5 @@
 import {
+  Teleport,
   defineComponent,
   h,
   isVNode,
@@ -19,6 +20,8 @@ import type {
   FormatContext,
   PaginationOptions,
   PartialTableState,
+  SelectionInput,
+  TableSlots,
   TableState,
   TypeDef,
 } from "@trapezium/core"
@@ -36,11 +39,19 @@ import type {
  * rendered into their own container with Vue's own renderer, so a custom cell
  * is a real Vue component with props, events and the app's context — not a
  * string of HTML.
+ *
+ * The slots — `toolbar`, `appendRow`, `footer` and `empty` — are ordinary Vue
+ * slots, teleported into the place the table keeps for them, so they stay
+ * reactive like any other template.
  */
 
 export type VueColumn<TRow extends AnyRow = AnyRow> = Omit<ColumnDef<TRow, unknown>, "render" | "renderHeader"> & {
   render?: (context: CellContext<TRow, unknown>) => VNode | Node | string
 }
+
+/** The slots a template can fill. `empty` lands in the table's `emptyState`. */
+const SLOTS = ["toolbar", "appendRow", "footer", "empty"] as const
+type SlotName = (typeof SLOTS)[number]
 
 export const Table = defineComponent({
   name: "TrapeziumTable",
@@ -71,7 +82,11 @@ export const Table = defineComponent({
     columnMenu: { type: Boolean, default: true },
     columnControl: { type: Boolean, default: true },
     pagination: { type: [Boolean, Object] as PropType<boolean | PaginationOptions>, default: true },
-    selection: { type: [Boolean, String] as PropType<boolean | "single" | "multiple">, default: false },
+    /**
+     * `true` means multiple. The object form adds `isSelectable`, for rows
+     * that must stay unselected, and `onChange`.
+     */
+    selection: { type: [Boolean, String, Object] as PropType<SelectionInput<AnyRow>>, default: false },
     export: { type: [Boolean, Object] as PropType<TableOptions["export"]>, default: false },
 
     types: { type: Object as PropType<Record<string, TypeDef>>, default: undefined },
@@ -87,6 +102,16 @@ export const Table = defineComponent({
     rowHref: { type: Function as PropType<(row: AnyRow) => string>, default: undefined },
     rowClassName: { type: Function as PropType<(row: AnyRow, index: number) => string | undefined>, default: undefined },
     emptyMessage: { type: String, default: undefined },
+
+    /** Added to the root element. */
+    className: { type: String, default: undefined },
+    /** Added per slot, on top of the defaults. */
+    classNames: { type: Object as PropType<Partial<TableSlots>>, default: undefined },
+    /** Drops the default classes so your own styling is the only styling. */
+    unstyled: { type: Boolean, default: false },
+
+    /** A visible caption above the table. */
+    caption: { type: String, default: undefined },
     ariaLabel: { type: String, default: undefined },
   },
 
@@ -96,7 +121,7 @@ export const Table = defineComponent({
     rowClick: (row: AnyRow, event: MouseEvent) => true,
   },
 
-  setup(props, { emit }) {
+  setup(props, { emit, slots }) {
     const host = ref<HTMLElement | null>(null)
     let table: TableInstance | undefined
 
@@ -111,6 +136,25 @@ export const Table = defineComponent({
     const releaseVNodes = () => {
       for (const container of mounted) renderVNode(null, container)
       mounted = []
+    }
+
+    /*
+      One element per slot, made once the component is on a page. The table is
+      handed the element; the template's content is teleported into it, so the
+      slot re-renders with the rest of the component rather than once.
+    */
+    const ready = ref(false)
+    const slotHosts: Partial<Record<SlotName, HTMLElement>> = {}
+
+    const slotHost = (name: SlotName): HTMLElement | undefined => {
+      if (!slots[name]) return undefined
+      let element = slotHosts[name]
+      if (!element) {
+        element = document.createElement("span")
+        element.style.display = "contents"
+        slotHosts[name] = element
+      }
+      return element
     }
 
     /** Wraps the caller's renderers so a VNode becomes a real DOM node. */
@@ -163,13 +207,22 @@ export const Table = defineComponent({
       rowHref: props.rowHref,
       rowClassName: props.rowClassName,
       emptyMessage: props.emptyMessage,
+      className: props.className,
+      classNames: props.classNames,
+      unstyled: props.unstyled,
+      caption: props.caption,
       ariaLabel: props.ariaLabel,
+      toolbar: slotHost("toolbar"),
+      appendRow: slotHost("appendRow"),
+      footer: slotHost("footer"),
+      emptyState: slotHost("empty"),
       onStateChange: (state) => emit("update:state", state),
       onSelectionChange: (ids, rows) => emit("selectionChange", ids, rows),
       onRowClick: (row, event) => emit("rowClick", row, event),
     })
 
     onMounted(() => {
+      ready.value = true
       if (host.value) table = createTable(host.value, options())
     })
 
@@ -183,23 +236,10 @@ export const Table = defineComponent({
       },
     )
 
+    // Every other prop, so nothing a template can change is ignored once the
+    // table is on screen.
     watch(
-      () => [
-        props.columns,
-        props.state,
-        props.loading,
-        props.error,
-        props.total,
-        props.search,
-        props.pagination,
-        props.selection,
-        props.density,
-        props.densityControl,
-        props.theme,
-        props.responsive,
-        props.format,
-        props.types,
-      ],
+      () => Object.fromEntries(Object.entries(props).filter(([key]) => key !== "data")),
       () => {
         releaseVNodes()
         table?.setOptions(options())
@@ -213,10 +253,18 @@ export const Table = defineComponent({
       table = undefined
     })
 
-    return { host, instance: () => table }
+    return { host, ready, slotHost, instance: () => table }
   },
 
   render() {
-    return h("div", { ref: "host", class: "tpz-host" })
+    const teleports = this.ready
+      ? SLOTS.flatMap((name) => {
+          const target = this.slotHost(name)
+          const content = this.$slots[name]
+          return target && content ? [h(Teleport, { to: target, key: name }, content())] : []
+        })
+      : []
+
+    return h("div", { ref: "host", class: "tpz-host" }, teleports)
   },
 })
