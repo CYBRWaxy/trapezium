@@ -33,7 +33,6 @@ import { getPath, humanise, toSelectOptions } from "./util.js"
  * resolved again — which is what makes appending a page to a long list cheap.
  */
 export const COLUMN_SAMPLE_SIZE = 50
-const SAMPLE_SIZE = COLUMN_SAMPLE_SIZE
 
 /** A column, or just the key of one. */
 export type ColumnInput<TRow = AnyRow, TNode = unknown> = ColumnDef<TRow, TNode> | (keyof TRow & string) | string
@@ -70,7 +69,7 @@ export function resolveColumns<TRow extends AnyRow, TNode>(
   options: ResolveColumnsOptions<TRow, TNode>,
 ): ResolvedColumns<TRow, TNode> {
   const { rows, state, types } = options
-  const sample = rows.slice(0, SAMPLE_SIZE)
+  const sample = rows.slice(0, COLUMN_SAMPLE_SIZE)
 
   const definitions = normaliseInput(options.columns, sample)
 
