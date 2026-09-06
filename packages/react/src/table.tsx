@@ -4,6 +4,9 @@ import {
   copyText,
   downloadText,
   resolveRowId,
+  resolveSelection,
+  selectRange,
+  selectableIds as selectableIdsOf,
   setSelected,
   toCsv,
   toDelimitedText,
@@ -21,7 +24,7 @@ import { HeaderCell } from "./header-cell.js"
 import { Icon } from "./icon.js"
 import { InfiniteSentinel, Pagination } from "./pagination.js"
 import { Toolbar } from "./toolbar.js"
-import type { SearchOptions, TableProps, TableSelection } from "./types.js"
+import type { SearchOptions, TableProps } from "./types.js"
 import { useTable } from "./use-table.js"
 
 /**
@@ -78,7 +81,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
     header handlers on every keystroke in the search box.
   */
   const selection = useMemo(
-    () => normaliseSelection(props.selection, props.onSelectionChange),
+    () => resolveSelection(props.selection, props.onSelectionChange),
     [props.selection, props.onSelectionChange],
   )
 
@@ -178,10 +181,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
   /* ── Selection ─────────────────────────────────────────────────────────── */
 
   const selectableIds = useMemo(
-    () =>
-      selection?.isSelectable
-        ? rows.map((row, index) => (selection.isSelectable?.(row, index) ? rowIds[index]! : undefined)).filter((id): id is string => id !== undefined)
-        : rowIds,
+    () => selectableIdsOf(rows, rowIds, selection?.isSelectable),
     [rows, rowIds, selection],
   )
 
@@ -193,24 +193,24 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
   const lastToggled = useRef<string | undefined>(undefined)
 
   const toggleRow = useCallback(
-    (id: string, index: number, event: React.MouseEvent | React.ChangeEvent) => {
-      const shift = "shiftKey" in event && event.shiftKey
+    (id: string, event: React.ChangeEvent<HTMLInputElement>) => {
+      // React's change event does not carry the modifier keys; the click
+      // underneath it does.
+      const native = event.nativeEvent
+      const shift = "shiftKey" in native && native.shiftKey === true
       const anchor = lastToggled.current
 
       if (shift && anchor && selection?.mode !== "single") {
-        const from = rowIds.indexOf(anchor)
-        if (from !== -1) {
-          const [low, high] = from < index ? [from, index] : [index, from]
-          const ids = rowIds.slice(low, high + 1)
-          update((current) => setSelected(current, ids, !current.selection.includes(id)))
-          return
-        }
+        // The range runs over the selectable rows only, so a disabled row
+        // between two chosen ones is stepped over rather than swept up.
+        update((current) => selectRange(current, selectableIds, anchor, id, !current.selection.includes(id)))
+        return
       }
 
       lastToggled.current = id
       update((current) => toggleSelection(current, id, selection?.mode === "single"))
     },
-    [rowIds, selection, update],
+    [selectableIds, selection, update],
   )
 
   /*
@@ -430,7 +430,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                           disabled={selection.isSelectable ? !selection.isSelectable(row, rowIndex) : false}
                           aria-label={`Select row ${String(rowIndex + 1)}`}
                           onClick={(event) => event.stopPropagation()}
-                          onChange={(event) => toggleRow(id, rowIndex, event)}
+                          onChange={(event) => toggleRow(id, event)}
                         />
                       </td>
                     )}
@@ -572,16 +572,6 @@ function isPinEdge(columns: Array<{ key: string; pin?: "start" | "end" }>, key: 
   const starts = columns.filter((column) => column.pin === "start")
   const ends = columns.filter((column) => column.pin === "end")
   return starts[starts.length - 1]?.key === key || ends[0]?.key === key
-}
-
-function normaliseSelection<TRow extends AnyRow>(
-  option: TableProps<TRow>["selection"],
-  onChange: TableProps<TRow>["onSelectionChange"],
-): (TableSelection<TRow> & { mode: "single" | "multiple" }) | undefined {
-  if (!option) return undefined
-  if (option === true) return { mode: "multiple", onChange }
-  if (typeof option === "string") return { mode: option, onChange }
-  return { ...option, mode: option.mode ?? "multiple", onChange: option.onChange ?? onChange }
 }
 
 function normaliseSearch(option: TableProps<AnyRow>["search"]): SearchOptions | undefined {

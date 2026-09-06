@@ -4,6 +4,8 @@ import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { cleanup } from "@testing-library/react"
 
+import { pickUrlState, stateFromUrl } from "@trapezium/core"
+
 import { Table } from "./table.js"
 
 afterEach(cleanup)
@@ -146,6 +148,68 @@ describe("selection", () => {
 
     await user.click(screen.getByRole("checkbox", { name: /select all/i }))
     expect(screen.getByText("3 selected")).toBeDefined()
+  })
+
+  it("selects a range with shift held", async () => {
+    const user = userEvent.setup()
+    render(<Table data={people} selection />)
+
+    await user.click(screen.getByRole("checkbox", { name: "Select row 1" }))
+    await user.keyboard("{Shift>}")
+    await user.click(screen.getByRole("checkbox", { name: "Select row 3" }))
+    await user.keyboard("{/Shift}")
+
+    expect(screen.getByText("3 selected")).toBeDefined()
+  })
+
+  describe("rows that cannot be selected", () => {
+    const inactiveLocked = { isSelectable: (person: Person) => person.active }
+
+    it("disable their checkbox", () => {
+      render(<Table data={people} selection={inactiveLocked} />)
+
+      expect(screen.getByRole<HTMLInputElement>("checkbox", { name: "Select row 1" }).disabled).toBe(false)
+      expect(screen.getByRole<HTMLInputElement>("checkbox", { name: "Select row 2" }).disabled).toBe(true)
+    })
+
+    it("are skipped when the header selects the page, which then reads as complete", async () => {
+      const user = userEvent.setup()
+      const onSelectionChange = vi.fn()
+      render(<Table data={people} selection={inactiveLocked} onSelectionChange={onSelectionChange} />)
+
+      await user.click(screen.getByRole("checkbox", { name: /select all/i }))
+
+      expect(onSelectionChange).toHaveBeenLastCalledWith(["1", "3"], [people[0], people[2]])
+      expect(screen.getByRole<HTMLInputElement>("checkbox", { name: /clear selection/i }).checked).toBe(true)
+    })
+
+    it("are stepped over by a shift-click range", async () => {
+      const user = userEvent.setup()
+      const onSelectionChange = vi.fn()
+      render(<Table data={people} selection={inactiveLocked} onSelectionChange={onSelectionChange} />)
+
+      await user.click(screen.getByRole("checkbox", { name: "Select row 1" }))
+      await user.keyboard("{Shift>}")
+      await user.click(screen.getByRole("checkbox", { name: "Select row 3" }))
+      await user.keyboard("{/Shift}")
+
+      expect(onSelectionChange).toHaveBeenLastCalledWith(["1", "3"], [people[0], people[2]])
+    })
+  })
+
+  it("keeps its selection when the URL controls the rest of the state", async () => {
+    const user = userEvent.setup()
+    const onStateChange = vi.fn()
+    // What a server page reads from the address bar, then hands to the table —
+    // trimmed to what the URL actually carries, so the selection stays local.
+    const fromUrl = stateFromUrl("?sort=name:asc")
+    render(<Table data={people} selection state={pickUrlState(fromUrl)} onStateChange={onStateChange} />)
+
+    await user.click(screen.getByRole("checkbox", { name: "Select row 1" }))
+
+    expect(screen.getByRole<HTMLInputElement>("checkbox", { name: "Select row 1" }).checked).toBe(true)
+    expect(screen.getByText("1 selected")).toBeDefined()
+    expect(onStateChange).toHaveBeenLastCalledWith(expect.objectContaining({ selection: ["1"] }))
   })
 })
 
