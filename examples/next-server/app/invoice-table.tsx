@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation"
 import { useTransition } from "react"
 import Link from "next/link"
-import { Table, applyStateToUrl, type Column, type TableState } from "@trapezium/react"
+import { Table, applyStateToUrl, pickUrlState, type Column, type TableState } from "@trapezium/react"
 
 import { allMatching, distinctValues } from "../actions"
 import { STATUS_OPTIONS, type Invoice } from "../invoices"
@@ -56,6 +56,19 @@ export function InvoiceTable({
   const href = (next: TableState) => applyStateToUrl(base, next)
 
   const go = (url: string) => startTransition(() => router.push(url, { scroll: false }))
+
+  /*
+    Only what the URL carries is controlled from it. Selecting a row or
+    dragging a column edge changes the state without changing the URL, so those
+    parts stay with the table — and a change that leaves the URL where it is
+    does not fetch the same page again.
+  */
+  const controlled = pickUrlState(state)
+  const currentHref = href(state)
+  const onStateChange = (next: TableState) => {
+    const url = href(next)
+    if (url !== currentHref) go(url)
+  }
 
   /** Changing a switch starts the view again from page one. */
   const setView = (change: Partial<View>) => {
@@ -145,8 +158,8 @@ export function InvoiceTable({
         */
         server={{ distinct: distinctValues, all: allMatching }}
         loading={pending}
-        state={state}
-        onStateChange={(next) => go(href(next))}
+        state={controlled}
+        onStateChange={onStateChange}
         // Every control is also a real link, so the table sorts, filters and
         // pages before the client bundle has loaded — and keyboard and
         // middle-click behave the way they do everywhere else on the web.
@@ -155,7 +168,9 @@ export function InvoiceTable({
         getRowId={(invoice) => invoice.id}
         columns={columns}
         search={{ placeholder: "Search invoices", debounce: 300 }}
-        selection
+        // A paid invoice has nothing left to do to it, so it cannot be picked
+        // for a bulk action: its checkbox is disabled and "select all" skips it.
+        selection={{ isSelectable: (invoice) => !invoice.paid }}
         export
         pagination={{ mode: view.mode, pageSize: 25, pageSizeOptions: [10, 25, 50, 100] }}
         responsive={view.cards ? "cards" : "scroll"}
