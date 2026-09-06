@@ -375,21 +375,18 @@
   taller than the well it sits in, and centring short content in a tall row
   looks deliberate rather than dropped in from above.
 */
-.tpz[data-row-height="auto"] .tpz-td {
-  vertical-align: top;
-}
-
 /*
   Where the height comes from is the only difference between the two.
 
-  `auto` lets the row follow its content, with the token as the floor. A number
-  pins the row to the token and clips what will not fit — asking for rows of
-  exactly this height and then getting a taller one would make the setting
-  meaningless.
+  `auto` lets the row follow its content, with the token as the floor — on a
+  table cell `height` is a minimum, so this is the same declaration the fixed
+  layout makes, meaning something else. A number pins the row to the token and
+  clips what will not fit; asking for rows of exactly this height and then
+  getting a taller one would make the setting meaningless.
 */
 .tpz[data-row-height="auto"] .tpz-td {
   height: var(--tpz-row-height);
-  overflow: visible;
+  vertical-align: top;
 }
 
 /*
@@ -1301,6 +1298,29 @@
     font-family: var(--tpz-font-sans);
     font-size: var(--tpz-text-ui);
     text-align: left;
+  }
+
+  /*
+    Row height is about rows, and a card has none. Left alone, an exact height
+    would go on clamping every field of the card to a row's worth of lines, and
+    the row-derived line count would cap a column's own `wrap: 3`.
+  */
+  .tpz[data-row-height="exact"][data-responsive="cards"] .tpz-td {
+    height: auto;
+    overflow: visible;
+  }
+
+  .tpz[data-row-height="exact"][data-responsive="cards"] .tpz-fit {
+    display: block;
+    max-height: none;
+    -webkit-line-clamp: none;
+    line-clamp: none;
+  }
+
+  .tpz[data-row-height="exact"][data-responsive="cards"] .tpz-clamp {
+    max-height: none;
+    -webkit-line-clamp: var(--tpz-cell-lines, 2);
+    line-clamp: var(--tpz-cell-lines, 2);
   }
 
   /* A cell with no label to show — the selection box — keeps its own layout. */
