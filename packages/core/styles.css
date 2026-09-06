@@ -1018,6 +1018,16 @@
 
   .tpz[data-responsive="cards"] .tpz-td {
     display: flex;
+    /*
+      A cell carries its column's width as an inline style — the one the column
+      was given, or the one a person dragged it to — and an inline style
+      outranks every rule in this file. The width means nothing once the row is
+      a card, and left alone it makes every field a column-sized box down the
+      left of the card with a lone unsized one reaching the right edge.
+      `!important` is the only thing in the cascade that beats an inline style,
+      which is why it is here and nowhere else in the layout.
+    */
+    width: auto !important;
     height: auto;
     align-items: baseline;
     justify-content: space-between;
@@ -1026,6 +1036,12 @@
     padding: 0.1875rem 0.75rem;
     text-align: right;
     white-space: normal;
+  }
+
+  /* The leading link is sized as a column too, and a card has no columns. */
+  .tpz[data-responsive="cards"] .tpz-lead {
+    min-width: 0;
+    max-width: none;
   }
 
   .tpz[data-responsive="cards"] .tpz-td[data-pin],

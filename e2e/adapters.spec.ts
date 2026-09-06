@@ -141,6 +141,35 @@ for (const example of EXAMPLES) {
       expect(after.indexOf("Team")).toBeLessThan(after.indexOf("Email"))
     })
 
+    test("stacks into cards that ignore column widths", async ({ page }) => {
+      /*
+        Every example gives its actions column a width. As a column that is a
+        width; as a field in a card it is nothing, and the field must run the
+        full width of the card like every other.
+      */
+      await page.setViewportSize({ width: 375, height: 800 })
+      const table = configured(page)
+      await page.locator("label.switch").filter({ hasText: "Card layout" }).click()
+      await expect(table.root.locator("thead")).toBeHidden()
+
+      const row = table.rows().first()
+      const rowBox = await row.boundingBox()
+      if (!rowBox) throw new Error("the first row has no box")
+
+      const cells = await row.locator("td").evaluateAll((cells) =>
+        cells.map((cell) => {
+          const box = cell.getBoundingClientRect()
+          return { key: cell.dataset["key"], left: box.left, right: box.right }
+        }),
+      )
+      expect(cells.map((cell) => cell.key)).toContain("actions")
+
+      for (const cell of cells) {
+        expect(cell.left, `${String(cell.key)} starts at the left edge`).toBeCloseTo(rowBox.x, 0)
+        expect(cell.right, `${String(cell.key)} ends at the right edge`).toBeCloseTo(rowBox.x + rowBox.width, 0)
+      }
+    })
+
     test("hides a column from the column menu", async ({ page }) => {
       const table = configured(page)
 

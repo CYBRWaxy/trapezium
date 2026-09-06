@@ -114,6 +114,8 @@ Below 40rem the table becomes stacked cards, with each cell labelled by its head
 
 It is also pure CSS. There is no second render, no measuring, and nothing to disagree about between a server and a browser.
 
+Column widths and pinning belong to the table, not the cards. A width a column was given, or dragged to, and a `pin` on it are both ignored while the rows are stacked: every field runs the full width of its card, and comes back to its column when there is room for a table again.
+
 ## Drag feedback
 
 While a column is being dragged, the header it came from dims (`[data-dragging]`), the header it is over shows a line on the edge it will land on (`[data-drop="before" | "after"]`), and the table gets a dashed outline (`[data-dragging-out]`) to say that letting go outside will remove it. All three are tokens away from being restyled:

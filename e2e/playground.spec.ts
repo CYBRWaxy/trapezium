@@ -75,6 +75,43 @@ test("becomes cards when the table is narrow", async ({ page }) => {
   await expect(table.root.locator("thead")).toBeHidden()
 })
 
+test("a card ignores the widths its columns had as columns", async ({ page }) => {
+  const table = configured(page)
+
+  /*
+    Two ways a cell ends up carrying a width: the column definition names one
+    (the playground's notes and actions columns do), and a person drags or
+    keys a header to a size, which the state remembers. Neither means anything
+    once the row is a card — every field takes the full width of the card, and
+    a column that was 90px wide on a desktop must not still be 90px on a phone.
+  */
+  await table.header("Customer").getByRole("button", { name: /Resize/ }).focus()
+  await page.keyboard.press("Shift+ArrowRight")
+  await expect(table.header("Customer")).toHaveAttribute("style", /width/)
+
+  await page.setViewportSize({ width: 375, height: 800 })
+  await page.locator("label.switch").filter({ hasText: "Card layout" }).click()
+  await expect(table.root.locator("thead")).toBeHidden()
+
+  const row = table.rows().first()
+  const rowBox = await row.boundingBox()
+  if (!rowBox) throw new Error("the first row has no box")
+
+  const cells = await row.locator("td").evaluateAll((cells) =>
+    cells.map((cell) => {
+      const box = cell.getBoundingClientRect()
+      return { key: cell.dataset["key"], left: box.left, right: box.right }
+    }),
+  )
+  expect(cells.map((cell) => cell.key)).toEqual(expect.arrayContaining(["customer.name", "notes", "actions"]))
+
+  // Every field runs edge to edge, whatever width its column once had.
+  for (const cell of cells) {
+    expect(cell.left, `${String(cell.key)} starts at the left edge`).toBeCloseTo(rowBox.x, 0)
+    expect(cell.right, `${String(cell.key)} ends at the right edge`).toBeCloseTo(rowBox.x + rowBox.width, 0)
+  }
+})
+
 test("removes a column by dragging it out of the table", async ({ page, browserName }) => {
   /*
     Chromium only, and not because the feature is: Playwright can only synthesise
