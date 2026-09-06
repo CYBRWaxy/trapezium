@@ -195,7 +195,7 @@ describe("the design-system bridges", () => {
 
   const mappings = (css: string) =>
     new Map(
-      [...css.matchAll(/(--tpz-[\w-]+):\s*([^;]+);/g)].map(([, token, value]) => [token, value.trim()]),
+      [...css.matchAll(/(--tpz-[\w-]+):\s*([^;]+);/g)].map((match) => [match[1] ?? "", (match[2] ?? "").trim()]),
     )
 
   /*
