@@ -10,7 +10,9 @@ import type {
   PaginationOptions,
   PartialTableState,
   ResolvedColumn,
+  SelectionOptions,
   ServerSource,
+  TableSlots,
   TableState,
   TypeDef,
 } from "@trapezium/core"
@@ -33,49 +35,17 @@ export type TableCellContext<TRow = AnyRow> = CellContext<TRow, ReactNode>
 export type TableHeaderContext<TRow = AnyRow> = HeaderContext<TRow, ReactNode>
 export type TableColumn<TRow = AnyRow> = ResolvedColumn<TRow, ReactNode>
 
-/**
- * The parts of the table a caller can restyle.
- *
- * Every slot takes a class name that is *added* to the default, so a Tailwind
- * user overrides what they care about and inherits the rest. `unstyled` drops
- * the defaults entirely for anyone who wants to start from nothing.
- */
-export type TableSlots = {
-  root: string
-  frame: string
-  toolbar: string
-  search: string
-  scroll: string
-  table: string
-  thead: string
-  tbody: string
-  headerRow: string
-  headerCell: string
-  row: string
-  cell: string
-  selectCell: string
-  pagination: string
-  empty: string
-  loading: string
-  footer: string
-}
+export type { TableSlots } from "@trapezium/core"
 
 export type SelectionMode = "single" | "multiple"
 
-export type TableSelection<TRow = AnyRow> = {
-  mode?: SelectionMode
-  /** Rows that cannot be selected — a disabled record, a group header. */
-  isSelectable?: (row: TRow, index: number) => boolean
-  /** Fires with the ids and the rows behind them, whenever the selection changes. */
-  onChange?: (ids: string[], rows: TRow[]) => void
-}
+/** The selection options, as `<Table selection={…}>` takes them. */
+export type TableSelection<TRow = AnyRow> = SelectionOptions<TRow>
 
 export type SearchOptions = {
   placeholder?: string
   /** Milliseconds to wait before applying a keystroke. Defaults to 150. */
   debounce?: number
-  /** Start with the box visible rather than behind its button. Defaults to true. */
-  alwaysVisible?: boolean
 }
 
 export type ExportOptions<TRow = AnyRow> = {

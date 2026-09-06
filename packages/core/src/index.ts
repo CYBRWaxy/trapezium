@@ -32,7 +32,9 @@ export type {
   PartialTableState,
   Pin,
   ResolvedColumn,
+  ResolvedSelection,
   SelectOption,
+  SelectionInput,
   SelectionOptions,
   ServerSource,
   Sort,
@@ -120,6 +122,7 @@ export {
   removeFilter,
   removeFilterAt,
   resetView,
+  selectRange,
   setDensity,
   setFilter,
   setMatch,
@@ -138,6 +141,10 @@ export {
   toggleSort,
 } from "./state.js"
 
+export { resolveSelection, selectableIds } from "./selection.js"
+export { SLOT_CLASSES, createClasses, cx } from "./classes.js"
+export type { ClassResolver, TableSlots } from "./classes.js"
+
 export { createStore, createTableStore } from "./store.js"
 export type { Store, TableStore } from "./store.js"
 
@@ -147,6 +154,7 @@ export {
   applyStateToUrl,
   decodeFilters,
   encodeFilters,
+  pickUrlState,
   stateFromSearchParams,
   stateFromUrl,
   stateToQueryString,
