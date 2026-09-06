@@ -440,6 +440,11 @@ export type PaginationOptions = {
  *
  * `true` on a table means `{ mode: "multiple" }`; a bare `"single"` or
  * `"multiple"` sets the mode alone. The object form is for the rest.
+ *
+ * The callbacks are written as methods rather than function properties so
+ * that a narrower row type is accepted: an adapter whose component is not
+ * generic, like Vue's, types rows as `AnyRow`, and a caller's
+ * `(invoice: Invoice) => …` must still be allowed in.
  */
 export type SelectionOptions<TRow = AnyRow> = {
   /** One row at a time, as radio buttons, or any number, as checkboxes. Defaults to `multiple`. */
@@ -451,9 +456,9 @@ export type SelectionOptions<TRow = AnyRow> = {
    * range skip them, and they are never handed to `onChange`. Everything else
    * about the row is unchanged: it still sorts, filters and exports.
    */
-  isSelectable?: (row: TRow, index: number) => boolean
+  isSelectable?(row: TRow, index: number): boolean
   /** Fires with the ids and the rows behind them, whenever the selection changes. */
-  onChange?: (ids: string[], rows: TRow[]) => void
+  onChange?(ids: string[], rows: TRow[]): void
 }
 
 /**
