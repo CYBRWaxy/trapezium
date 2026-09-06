@@ -168,4 +168,11 @@ export function wrapAttribute(wrap: boolean | number | undefined): "true" | "fal
   return wrap === false ? "false" : "true"
 }
 
+/*
+  `memo` does not carry a generic through: what it returns is a component over
+  `RowProps<AnyRow>`, which would erase the caller's row type at every use. The
+  cast gives the memoised component the signature `RowInner` already has — the
+  same function, typed as itself — which is why it is a cast and not an error
+  being silenced.
+*/
 export const Row = memo(RowInner) as typeof RowInner
