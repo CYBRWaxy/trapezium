@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import { createState } from "./state.js"
 import {
   applyStateToUrl,
+  pickUrlState,
   stateFromSearchParams,
   stateFromUrl,
   stateToQueryString,
@@ -115,5 +116,37 @@ describe("applyStateToUrl", () => {
   it("clears a parameter that has gone back to its default", () => {
     const url = applyStateToUrl("/people?tab=archive&page=2", createState({ page: 1 }))
     expect(url).toBe("/people?tab=archive")
+  })
+})
+
+describe("pickUrlState", () => {
+  const state = createState({
+    sort: [{ key: "name", direction: "asc" }],
+    page: 3,
+    selection: ["a", "b"],
+    widths: { name: 240 },
+    hidden: ["notes"],
+  })
+
+  it("keeps what the URL carries and leaves out what it does not", () => {
+    const picked = pickUrlState(state)
+
+    expect(picked.sort).toEqual(state.sort)
+    expect(picked.page).toBe(3)
+    expect(picked.hidden).toEqual(["notes"])
+    expect(picked).not.toHaveProperty("selection")
+    expect(picked).not.toHaveProperty("widths")
+  })
+
+  it("controls every carried key, even one still at its default", () => {
+    // Otherwise the back button could not undo a sort: the URL would lose the
+    // parameter and the table would keep the order it had.
+    expect(pickUrlState(createState())).toHaveProperty("sort", [])
+    expect(pickUrlState(createState())).toHaveProperty("search", "")
+  })
+
+  it("follows the same include list as the codec", () => {
+    const picked = pickUrlState(state, { include: ["selection", "page"] })
+    expect(picked).toEqual({ selection: ["a", "b"], page: 3 })
   })
 })

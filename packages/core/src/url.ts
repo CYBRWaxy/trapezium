@@ -353,6 +353,43 @@ export function applyStateToUrl(
   return search ? `${path}?${search}` : path
 }
 
+/**
+ * The part of a state the URL carries, with defaults filled in — what to hand a
+ * table as its controlled `state` when the URL is the source of truth.
+ *
+ * A controlled `state` controls exactly the keys it has. Pass the whole state
+ * read from a URL and the keys the URL never carries — selection and widths,
+ * by default — are controlled too, pinned to their defaults, and every
+ * checkbox and every dragged column edge snaps straight back. This keeps the
+ * URL's keys and leaves the rest to the table.
+ *
+ * ```tsx
+ * <Table state={pickUrlState(state)} onStateChange={(next) => router.push(applyStateToUrl(pathname, next))} />
+ * ```
+ */
+export function pickUrlState(state: TableState, options: UrlOptions = {}): PartialTableState {
+  const include = options.include ?? DEFAULT_URL_KEYS
+  const picked: PartialTableState = {}
+
+  for (const key of include) {
+    if (key === "columns") {
+      picked.order = state.order
+      picked.hidden = state.hidden
+    } else if (key === "sort") picked.sort = state.sort
+    else if (key === "filters") picked.filters = state.filters
+    else if (key === "match") picked.match = state.match
+    else if (key === "search") picked.search = state.search
+    else if (key === "page") picked.page = state.page
+    else if (key === "pageSize") picked.pageSize = state.pageSize
+    else if (key === "pinned") picked.pinned = state.pinned
+    else if (key === "density") picked.density = state.density
+    else if (key === "selection") picked.selection = state.selection
+    else if (key === "widths") picked.widths = state.widths
+  }
+
+  return picked
+}
+
 /** Full state from a URL, with defaults filled in — what a server page wants. */
 export function stateFromUrl(
   input: URLSearchParams | Record<string, string | string[] | undefined> | string,
