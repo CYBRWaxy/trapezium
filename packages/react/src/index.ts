@@ -61,6 +61,7 @@ export {
   formatWithType,
   inferColumns,
   inferType,
+  pickUrlState,
   stateFromSearchParams,
   stateFromUrl,
   stateToQueryString,
