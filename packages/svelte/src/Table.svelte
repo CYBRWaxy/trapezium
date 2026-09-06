@@ -25,15 +25,20 @@
     tableState?: TableState
   }
 
-  let { tableState = $bindable(), ...options }: Props = $props()
+  let { tableState = $bindable(), onStateChange, ...options }: Props = $props()
 
-  const settings = $derived({
-    ...options,
-    onStateChange: (next: TableState) => {
-      tableState = next
-      options.onStateChange?.(next)
-    },
-  })
+  /*
+    One handler for the life of the component. The action takes the cheap path
+    — replace the rows, keep the arrangement — only when every option but
+    `data` is the same object as before, and a handler made afresh on every
+    change would make that never true.
+  */
+  const reportState = (next: TableState) => {
+    tableState = next
+    onStateChange?.(next)
+  }
+
+  const settings = $derived({ ...options, onStateChange: reportState })
 </script>
 
 <div use:trapezium={settings}></div>

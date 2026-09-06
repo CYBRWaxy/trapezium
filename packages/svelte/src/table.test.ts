@@ -144,3 +144,27 @@ describe("options that change while the table is running", () => {
     expect(items.map((item) => item.textContent?.trim())).toEqual(["Compact", "Normal", "Relaxed"])
   })
 })
+
+describe("selection options and slots", () => {
+  it("disables the rows that cannot be selected", () => {
+    const node = mount({ data: people, columns: ["name"], selection: { isSelectable: (row) => row.plan === "pro" } })
+
+    const boxes = [...node.querySelectorAll<HTMLInputElement>("tbody .tpz-select-cell input")]
+    expect(boxes.map((box) => box.disabled)).toEqual([false, true])
+  })
+
+  it("places a toolbar node, an append row and a footer", () => {
+    const button = document.createElement("button")
+    button.textContent = "New"
+    const node = mount({ data: people, columns: ["name"], toolbar: button, appendRow: "Add one", footer: "2 people" })
+
+    expect(node.querySelector(".tpz-toolbar button")?.textContent).toBe("New")
+    expect(node.querySelector("tbody tr:last-child")?.textContent).toContain("Add one")
+    expect(node.querySelector(".tpz-footer")?.textContent).toBe("2 people")
+  })
+
+  it("takes the class overrides", () => {
+    const node = mount({ data: people, columns: ["name"], classNames: { cell: "mono" } })
+    expect(node.querySelector("tbody td")?.className).toBe("tpz-td mono")
+  })
+})
