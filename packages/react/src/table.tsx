@@ -321,6 +321,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
           exportControl={exportControl}
           extra={toolbar}
           className={classes("toolbar")}
+          searchClassName={classes("search")}
         />
 
         <div className={classes("scroll")}>
@@ -371,6 +372,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                     onDragStateChange={setDraggingColumn}
                     formatValue={formatValue(column)}
                     fetchOptions={column.filterOptions ? undefined : distinctFor?.(column.key)}
+                    className={classes("headerCell", column.headerClassName)}
                     style={{ width: column.width, minWidth: column.minWidth, maxWidth: column.maxWidth }}
                   />
                 ))}
@@ -503,7 +505,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
           )}
         </div>
 
-        {footer}
+        {footer && <div className={classes("footer")}>{footer}</div>}
 
         {pagination && (
           <Pagination

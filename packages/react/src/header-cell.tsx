@@ -48,6 +48,7 @@ export function HeaderCell<TRow extends AnyRow>({
   onDragStateChange,
   formatValue,
   fetchOptions,
+  className = "tpz-th",
 }: {
   column: TableColumn<TRow>
   state: TableState
@@ -75,6 +76,8 @@ export function HeaderCell<TRow extends AnyRow>({
   formatValue: (value: unknown) => string
   /** Asks the server what values this column has, when the table knows how. */
   fetchOptions?: () => Promise<SelectOption[]>
+  /** The resolved slot class, with the column's own `headerClassName` already added. */
+  className?: string
 }) {
   const [dropEdge, setDropEdge] = useState<"before" | "after" | undefined>()
   const [dragging, setDragging] = useState(false)
@@ -145,7 +148,7 @@ export function HeaderCell<TRow extends AnyRow>({
     <th
       ref={headerRef}
       scope="col"
-      className="tpz-th"
+      className={className}
       data-align={column.align}
       data-key={column.key}
       data-pin={column.pin}

@@ -41,6 +41,7 @@ export function Toolbar<TRow extends AnyRow>({
   exportControl,
   extra,
   className,
+  searchClassName = "tpz-search",
 }: {
   state: TableState
   update: (next: (current: TableState) => TableState) => void
@@ -54,6 +55,8 @@ export function Toolbar<TRow extends AnyRow>({
   exportControl: { onDownload: () => void; onCopy?: () => void } | undefined
   extra?: React.ReactNode
   className: string
+  /** The resolved `search` slot class. */
+  searchClassName?: string
 }) {
   const anything = search || columnControl || densityControl || exportControl || extra
   if (!anything && state.filters.length === 0) return null
@@ -73,7 +76,7 @@ export function Toolbar<TRow extends AnyRow>({
       <div className="tpz-toolbar-group">
         {extra}
 
-        {search && <SearchBox state={state} update={update} options={search} />}
+        {search && <SearchBox state={state} update={update} options={search} className={searchClassName} />}
 
         {columnControl && (
           <ColumnMenu update={update} columns={columns} hiddenColumns={hiddenColumns} />
@@ -133,10 +136,12 @@ function SearchBox({
   state,
   update,
   options,
+  className,
 }: {
   state: TableState
   update: (next: (current: TableState) => TableState) => void
   options: SearchOptions
+  className: string
 }) {
   const [value, setValue] = useState(state.search)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -159,7 +164,7 @@ function SearchBox({
   }
 
   return (
-    <div className="tpz-search">
+    <div className={className}>
       <Icon name="search" className="tpz-search-icon" />
       <input
         type="search"
@@ -331,7 +336,7 @@ function FilterChips<TRow extends AnyRow>({
           <button
             type="button"
             className="tpz-chip-remove"
-            aria-label={`Remove filter on ${filter.key}`}
+            aria-label={`Remove filter on ${columns.find((entry) => entry.key === filter.key)?.header ?? filter.key}`}
             onClick={() => update((current) => removeFilterAt(current, index))}
           >
             <Icon name="close" size={12} />

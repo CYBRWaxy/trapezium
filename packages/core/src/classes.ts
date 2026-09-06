@@ -35,7 +35,6 @@ export type TableSlots = {
   selectCell: string
   pagination: string
   empty: string
-  loading: string
   footer: string
 }
 
@@ -58,7 +57,6 @@ export const SLOT_CLASSES: Record<keyof TableSlots, string> = {
   selectCell: "tpz-td tpz-select-cell",
   pagination: "tpz-pagination",
   empty: "tpz-state",
-  loading: "tpz-state",
   footer: "tpz-footer",
 }
 
