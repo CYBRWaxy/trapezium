@@ -152,6 +152,31 @@ export function setSelected(state: TableState, ids: readonly string[], selected:
   return { ...state, selection: [...set] }
 }
 
+/**
+ * Selects everything between two rows, inclusive — a shift-click.
+ *
+ * `ids` is the list the range runs over, in the order the rows are on screen,
+ * and should already leave out anything that cannot be selected. When the
+ * anchor is not in it — the row has scrolled off to another page, or was
+ * never selectable — the gesture falls back to toggling the target alone,
+ * which is what a click without shift would have done.
+ */
+export function selectRange(
+  state: TableState,
+  ids: readonly string[],
+  anchor: string | undefined,
+  target: string,
+  selected: boolean,
+): TableState {
+  const from = anchor === undefined ? -1 : ids.indexOf(anchor)
+  const to = ids.indexOf(target)
+  if (to === -1) return state
+  if (from === -1) return setSelected(state, [target], selected)
+
+  const [low, high] = from < to ? [from, to] : [to, from]
+  return setSelected(state, ids.slice(low, high + 1), selected)
+}
+
 export function clearSelection(state: TableState): TableState {
   return { ...state, selection: [] }
 }

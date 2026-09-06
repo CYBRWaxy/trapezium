@@ -9,6 +9,7 @@ import {
   setPage,
   setPageSize,
   setSearch,
+  selectRange,
   setSelected,
   toggleColumn,
   togglePin,
@@ -81,6 +82,35 @@ describe("selection", () => {
     const state = setSelected(createState({ selection: ["offscreen"] }), ["a", "b"], true)
     expect(state.selection).toEqual(["offscreen", "a", "b"])
     expect(setSelected(state, ["a", "b"], false).selection).toEqual(["offscreen"])
+  })
+
+  describe("a range", () => {
+    const ids = ["a", "b", "c", "d", "e"]
+
+    it("runs from the anchor to the target, inclusive, in either direction", () => {
+      expect(selectRange(createState(), ids, "b", "d", true).selection).toEqual(["b", "c", "d"])
+      expect(selectRange(createState(), ids, "d", "b", true).selection).toEqual(["b", "c", "d"])
+    })
+
+    it("clears the same stretch when asked to", () => {
+      const all = createState({ selection: ids })
+      expect(selectRange(all, ids, "b", "d", false).selection).toEqual(["a", "e"])
+    })
+
+    it("walks only the ids it is given, so a row left out is stepped over", () => {
+      const selectable = ["a", "c", "e"]
+      expect(selectRange(createState(), selectable, "a", "e", true).selection).toEqual(["a", "c", "e"])
+    })
+
+    it("falls back to the target alone when the anchor is not on the list", () => {
+      expect(selectRange(createState(), ids, "gone", "c", true).selection).toEqual(["c"])
+      expect(selectRange(createState(), ids, undefined, "c", true).selection).toEqual(["c"])
+    })
+
+    it("does nothing for a target it does not know", () => {
+      const state = createState({ selection: ["a"] })
+      expect(selectRange(state, ids, "a", "zz", true)).toBe(state)
+    })
   })
 })
 

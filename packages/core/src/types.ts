@@ -435,9 +435,31 @@ export type PaginationOptions = {
   siblings?: number
 }
 
-/** Row selection behaviour. */
-export type SelectionOptions = {
+/**
+ * Row selection behaviour.
+ *
+ * `true` on a table means `{ mode: "multiple" }`; a bare `"single"` or
+ * `"multiple"` sets the mode alone. The object form is for the rest.
+ */
+export type SelectionOptions<TRow = AnyRow> = {
+  /** One row at a time, as radio buttons, or any number, as checkboxes. Defaults to `multiple`. */
   mode?: "single" | "multiple"
-  /** Rows that cannot be selected — a disabled row, a group header. */
-  isSelectable?: (row: AnyRow, index: number) => boolean
+  /**
+   * Rows that cannot be selected — an archived record, a locked row, a total.
+   *
+   * Their checkbox is rendered disabled, the header checkbox and a shift-click
+   * range skip them, and they are never handed to `onChange`. Everything else
+   * about the row is unchanged: it still sorts, filters and exports.
+   */
+  isSelectable?: (row: TRow, index: number) => boolean
+  /** Fires with the ids and the rows behind them, whenever the selection changes. */
+  onChange?: (ids: string[], rows: TRow[]) => void
 }
+
+/**
+ * Every way a caller can ask for selection: a switch, a mode, or the options.
+ */
+export type SelectionInput<TRow = AnyRow> = boolean | "single" | "multiple" | SelectionOptions<TRow>
+
+/** Selection as the adapters read it, with the mode always decided. */
+export type ResolvedSelection<TRow = AnyRow> = SelectionOptions<TRow> & { mode: "single" | "multiple" }
