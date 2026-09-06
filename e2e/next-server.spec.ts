@@ -70,6 +70,29 @@ test.describe("with JavaScript", () => {
     await expect(table.count()).toContainText("480 rows")
   })
 
+  test("selects rows without leaving the page, and keeps them across a fetch", async ({ page }) => {
+    await page.goto("/")
+    const table = new Table(page)
+    const url = page.url()
+
+    // Paid invoices cannot be picked, so the page has a mix of both.
+    const boxes = table.rows().getByRole("checkbox")
+    const enabled = boxes.and(page.locator(":enabled"))
+    expect(await boxes.and(page.locator(":disabled")).count()).toBeGreaterThan(0)
+
+    await enabled.first().check()
+    await expect(enabled.first()).toBeChecked()
+    await expect(table.count()).toHaveText("1 selected")
+
+    // A selection is not part of the URL, so nothing was fetched for it.
+    expect(page.url()).toBe(url)
+
+    // A change that does go through the server leaves the selection alone.
+    await table.header("Amount").getByRole("link").first().click()
+    await expect(page).toHaveURL(/sort=amount/)
+    await expect(table.count()).toHaveText("1 selected")
+  })
+
   test("a set filter offers values the page never held", async ({ page }) => {
     await page.goto("/?setf=1")
     const table = new Table(page)

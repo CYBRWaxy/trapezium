@@ -73,7 +73,10 @@ function onSwitch(label: string, value: boolean) {
 
     <section>
       <h2>Everything switched on</h2>
-      <p>Drag a column header sideways to move it, or out of the table to remove it.</p>
+      <p>
+        Drag a column header sideways to move it, or out of the table to remove it. Sales is looked
+        after elsewhere, so those rows cannot be selected.
+      </p>
 
       <Controls
         :segments="[
@@ -103,7 +106,7 @@ function onSwitch(label: string, value: boolean) {
         :columns="columns"
         :get-row-id="(person) => person.id"
         :search="{ placeholder: 'Search people' }"
-        :selection="selection ? 'multiple' : false"
+        :selection="selection ? { isSelectable: (person) => person.team !== 'Sales' } : false"
         :responsive="cards ? 'cards' : 'scroll'"
         export
         :pagination="pagination"

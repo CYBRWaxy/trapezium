@@ -140,6 +140,19 @@ test("removes a column by dragging it out of the table", async ({ page, browserN
   expect(after).not.toContain("Email")
 })
 
+test("cannot select a paid invoice, and select-all does not try", async ({ page }) => {
+  const table = configured(page)
+  const boxes = table.rows().getByRole("checkbox")
+  const disabled = boxes.and(page.locator(":disabled"))
+  const enabled = boxes.and(page.locator(":enabled"))
+  expect(await disabled.count()).toBeGreaterThan(0)
+
+  await table.root.locator("thead").getByRole("checkbox").first().check()
+
+  for (const box of await disabled.all()) await expect(box).not.toBeChecked()
+  await expect(table.count()).toHaveText(`${String(await enabled.count())} selected`)
+})
+
 test("says so when there is nothing, when it is loading, and when it broke", async ({ page }) => {
   const section = page.locator("section").filter({ hasText: "Empty, loading, and error" })
 

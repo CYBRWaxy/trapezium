@@ -122,7 +122,9 @@
         columns,
         getRowId: (person) => person.id,
         search: { placeholder: "Search people" },
-        selection: "multiple",
+        // Sales is looked after elsewhere, so those rows cannot be selected:
+        // their box is disabled and "select all" skips them.
+        selection: { isSelectable: (person) => person.team !== "Sales" },
         export: true,
         pagination: { mode: "pages", pageSize: 12 },
         format: { currency: "GBP", locale: "en-GB" },
@@ -160,7 +162,9 @@
       })
 
       document.querySelector("#selection").addEventListener("change", (event) => {
-        table.setOptions({ selection: event.target.checked ? "multiple" : false })
+        table.setOptions({
+          selection: event.target.checked ? { isSelectable: (person) => person.team !== "Sales" } : false,
+        })
       })
 
       document.querySelector("#cards").addEventListener("change", (event) => {

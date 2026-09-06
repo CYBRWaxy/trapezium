@@ -146,7 +146,10 @@ function Playground() {
           data={invoices}
           getRowId={(invoice) => invoice.id}
           search={{ placeholder: "Search invoices" }}
-          selection={selection}
+          // Paid invoices have nothing left to do to them, so they cannot be
+          // picked for a bulk action: their box is disabled and "select all"
+          // skips them.
+          selection={selection ? { isSelectable: (invoice) => !invoice.paid } : false}
           onSelectionChange={setSelected}
           export
           densityControl

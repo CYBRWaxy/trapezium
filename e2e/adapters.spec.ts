@@ -91,16 +91,44 @@ for (const example of EXAMPLES) {
       expect(first.some((email) => second.includes(email))).toBe(false)
     })
 
-    test("selects rows, including the whole page at once", async ({ page }) => {
+    test("selects rows, including the whole page at once, skipping the ones it cannot", async ({ page }) => {
       const table = configured(page)
       const boxes = table.rows().getByRole("checkbox")
+      await expect(boxes).toHaveCount(example.pageSize)
 
-      await boxes.first().check()
-      await expect(boxes.first()).toBeChecked()
+      // Every example rules the Sales team out, so some boxes are disabled.
+      const enabled = boxes.and(page.locator(":enabled"))
+      const disabled = boxes.and(page.locator(":disabled"))
+      expect(await disabled.count()).toBeGreaterThan(0)
+
+      await enabled.first().check()
+      await expect(enabled.first()).toBeChecked()
+      await expect(table.count()).toHaveText("1 selected")
 
       await table.root.locator("thead").getByRole("checkbox").first().check()
-      await expect(boxes).toHaveCount(example.pageSize)
-      for (const box of await boxes.all()) await expect(box).toBeChecked()
+      for (const box of await enabled.all()) await expect(box).toBeChecked()
+      for (const box of await disabled.all()) await expect(box).not.toBeChecked()
+      await expect(table.count()).toHaveText(`${String(await enabled.count())} selected`)
+
+      // Complete, as far as this page can be — not "some of it".
+      const header = table.root.locator("thead").getByRole("checkbox").first()
+      await expect(header).toBeChecked()
+      expect(await header.evaluate((node) => (node as HTMLInputElement).indeterminate)).toBe(false)
+    })
+
+    test("selects a range with shift held", async ({ page }) => {
+      const table = configured(page)
+      const enabled = table.rows().getByRole("checkbox").and(page.locator(":enabled"))
+      expect(await enabled.count()).toBeGreaterThan(3)
+
+      await enabled.nth(0).check()
+      await enabled.nth(3).click({ modifiers: ["Shift"] })
+
+      // The first four selectable rows, and nothing after them.
+      const checked = await enabled.evaluateAll((nodes) => nodes.map((node) => (node as HTMLInputElement).checked))
+      expect(checked.slice(0, 4)).toEqual([true, true, true, true])
+      expect(checked.slice(4)).not.toContain(true)
+      await expect(table.count()).toHaveText("4 selected")
     })
 
     test("exports what the filters left, as CSV", async ({ page }) => {
