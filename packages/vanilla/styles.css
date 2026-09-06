@@ -855,6 +855,16 @@
   color: var(--tpz-danger);
 }
 
+/*
+  Rows that are on their way out: a table that is loading the next page keeps
+  the current one on screen, dimmed, rather than blanking. The skeleton rows are
+  hidden from assistive technology and are left at full strength.
+*/
+.tpz[data-loading="true"] .tpz-tbody .tpz-tr:not([aria-hidden="true"]) {
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+
 .tpz-skeleton {
   display: block;
   height: 0.625rem;
@@ -941,7 +951,15 @@
   margin-top: -1px;
 }
 
-/* ── Footer row ────────────────────────────────────────────────────────── */
+/* ── Footer ────────────────────────────────────────────────────────────── */
+
+/* The `footer` slot: the caller's content between the rows and the pagination. */
+.tpz-footer {
+  border-top: 1px solid var(--tpz-border);
+  padding: 0.375rem 0.5rem;
+  color: var(--tpz-muted-fg);
+  font-size: var(--tpz-text-ui);
+}
 
 .tpz-tfoot .tpz-td {
   position: sticky;
