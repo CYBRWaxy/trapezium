@@ -560,6 +560,13 @@
   box-shadow: var(--tpz-focus);
 }
 
+/* A row that cannot be selected keeps its box, so the gap in the column is explained. */
+.tpz-checkbox:disabled {
+  background: var(--tpz-muted);
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 /* ── Cell contents ─────────────────────────────────────────────────────── */
 
 .tpz-link {
