@@ -14,6 +14,24 @@ selection="single"            // radio buttons, one at a time
 selection={{ mode: "multiple", isSelectable: (row) => !row.archived }}
 ```
 
+The same three forms work in every adapter — `:selection="{ isSelectable }"` in Vue, `selection={{ isSelectable }}` in Svelte, `selection: { isSelectable }` in plain JavaScript.
+
+## Rows that cannot be selected
+
+`isSelectable` is called with each row and its index. A row it refuses keeps its checkbox, disabled, so the person can see there is one and that it is not for them. Everything else about the row is unchanged: it still sorts, filters, searches and exports.
+
+```tsx
+selection={{ isSelectable: (invoice) => !invoice.paid }}
+```
+
+The header checkbox selects only the rows that can be selected, and reads as complete when all of those are. A shift-click range steps over the ones in between that cannot be. Neither ever hands a refused row to `onSelectionChange`.
+
+A selection set from outside — a controlled `state`, a saved view — is taken as given, refused rows included. The table renders what it is told; the caller owns what it tells it.
+
+## Ranges
+
+Click one checkbox, hold shift and click another, and everything between them is selected — or cleared, if the second row was already selected. The range runs over the rows on screen, in the order they are shown.
+
 ## Row identity
 
 Selection is a list of row ids. Those come from `getRowId`, which defaults to `row.id`, then `row.uuid`, then the array index. The index is wrong the moment the data sorts, so supply it whenever your rows have their own id:

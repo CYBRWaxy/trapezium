@@ -101,6 +101,18 @@ use "Move left"/"Move right" in the column panel. Drag a header out of the table
 puff of smoke; the last visible column refuses. All of it lands in state.order / state.hidden.
 Disable with reorderable={false} on the table or a column. Pinned columns are not draggable.
 
+## Selection
+
+selection · selection="single" · selection={{ mode, isSelectable(row, index), onChange(ids, rows) }}
+A row `isSelectable` refuses gets a disabled checkbox; the header checkbox and shift-click ranges skip
+it. Ids come from getRowId (row.id, then row.uuid, then the index). The header selects the page on
+screen, not every page. Same forms in every adapter.
+
+## Slots
+
+toolbar · appendRow · footer · emptyState — React nodes in React; `#toolbar` `#appendRow` `#footer`
+`#empty` slots in Vue; a DOM node or string in Svelte and plain JavaScript.
+
 ## Pagination
 
 pagination={{ mode: "pages" | "simple" | "loadMore" | "infinite", pageSize, pageSizeOptions, siblings }}
@@ -114,8 +126,11 @@ One serialisable object:
       page /* 1-based */, pageSize, selection: string[], order: string[], hidden: string[],
       widths: Record<string, number>, pinned: Record<string, "start"|"end">, density }
 
-Controlled with `state` + `onStateChange`; uncontrolled with `defaultState`.
-URL: stateToQueryString(state, { prefix?, include? }) and stateFromUrl(searchParams).
+Controlled with `state` + `onStateChange`; uncontrolled with `defaultState`. A controlled `state`
+controls exactly the keys it has.
+URL: stateToQueryString(state, { prefix?, include? }) and stateFromUrl(searchParams). When the URL is
+the source of truth pass state={pickUrlState(state)}: the URL does not carry selection or widths, and
+controlling them from it pins them to their defaults.
 Saved views are JSON.stringify(state).
 
 ## Server-side data
@@ -155,7 +170,8 @@ CSS custom properties on `.tpz` (--tpz-surface, --tpz-muted, --tpz-border, --tpz
 --tpz-row-height, --tpz-font-mono, …). Dark mode follows the page's color-scheme, or `.dark` /
 [data-theme="dark"] on an ancestor, or theme="dark" on the table.
 classNames={{ root, frame, toolbar, search, scroll, table, thead, tbody, headerRow, headerCell, row,
-cell, selectCell, pagination, empty, loading, footer }} adds classes; `unstyled` drops the defaults.
+cell, selectCell, pagination, empty, footer }} adds classes; `unstyled` drops the defaults. Same in
+every adapter.
 responsive="cards" stacks rows below 40rem of container width, in pure CSS.
 Bridge to shadcn/ui: import "@trapezium/react/themes/shadcn.css" when the app's tokens are whole
 colours (oklch(...), hsl(...)), or "@trapezium/react/themes/shadcn-hsl.css" when they are bare HSL

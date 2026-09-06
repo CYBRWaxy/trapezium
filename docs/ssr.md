@@ -17,7 +17,7 @@ In the Next.js App Router the table is a client component (it has to be — it h
 This is what makes a view shareable, the back button work, and a server-rendered table correct on its first paint.
 
 ```tsx
-import { stateFromUrl, stateToQueryString } from "@trapezium/react"
+import { stateFromUrl, pickUrlState, stateToQueryString } from "@trapezium/react"
 ```
 
 ### Reading it on the server
@@ -39,7 +39,7 @@ export default async function Page({ searchParams }) {
 ```tsx
 "use client"
 import { useRouter, usePathname } from "next/navigation"
-import { Table, stateToQueryString } from "@trapezium/react"
+import { Table, pickUrlState, stateToQueryString } from "@trapezium/react"
 
 export function InvoiceTable({ rows, total, state }) {
   const router = useRouter()
@@ -50,13 +50,15 @@ export function InvoiceTable({ rows, total, state }) {
       data={rows}
       total={total}
       server
-      state={state}
+      state={pickUrlState(state)}
       onStateChange={(next) => router.push(`${pathname}?${stateToQueryString(next)}`)}
       columns={columns}
     />
   )
 }
 ```
+
+`pickUrlState` matters. A controlled `state` controls exactly the keys it contains, and `stateFromUrl` fills in every key — including selection and column widths, which the URL does not carry. Pass that whole object and every checkbox and every dragged column edge snaps straight back to the default the server sent. `pickUrlState` keeps the keys the URL carries, so the URL controls the view and the table keeps the rest. It takes the same `include` and `prefix` options as the codec.
 
 The query string it produces is short and readable, because only what differs from the defaults is written:
 

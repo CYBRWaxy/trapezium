@@ -24,7 +24,7 @@ import { Table } from "@trapezium/react"
 
 | Prop | Type | Default | |
 |---|---|---|---|
-| `state` | `Partial<TableState>` | — | Controlled state. |
+| `state` | `Partial<TableState>` | — | Controlled state. Controls exactly the keys it contains; the rest stay with the table. |
 | `defaultState` | `Partial<TableState>` | — | Starting state, uncontrolled. |
 | `onStateChange` | `(state: TableState) => void` | — | Fires with the complete next state. |
 
@@ -32,7 +32,7 @@ import { Table } from "@trapezium/react"
 
 | Prop | Type | Default | |
 |---|---|---|---|
-| `search` | `boolean \| { placeholder?, debounce?, alwaysVisible? }` | `false` | Global search. |
+| `search` | `boolean \| { placeholder?, debounce? }` | `false` | Global search. |
 | `filters` | `boolean` | `true` | Per-column filters. |
 | `sortable` | `boolean` | `true` | Column sorting. |
 | `resizable` | `boolean` | `true` | Drag column edges. |
@@ -40,13 +40,13 @@ import { Table } from "@trapezium/react"
 | `columnMenu` | `boolean` | `true` | The chevron menu in each header. |
 | `columnControl` | `boolean` | `true` | The "Columns" button. |
 | `pagination` | `boolean \| PaginationOptions` | `{ mode: "pages", pageSize: 25 }` | See below. |
-| `selection` | `boolean \| "single" \| "multiple" \| SelectionOptions` | `false` | |
+| `selection` | `boolean \| "single" \| "multiple" \| SelectionOptions` | `false` | `true` means multiple. |
 | `onSelectionChange` | `(ids: string[], rows: TRow[]) => void` | — | |
 | `export` | `boolean \| { filename?, clipboard?, scope?, fetchRows?, onExport? }` | `false` | CSV and clipboard. Contains every matching row, not the page. `scope: "page"` narrows it; `fetchRows` supplies rows the table does not have and lets it write the file; `onExport` takes the whole thing over. |
 
 `PaginationOptions` — `{ mode?: "pages" \| "simple" \| "loadMore" \| "infinite", pageSize?: number, pageSizeOptions?: number[], siblings?: number }`
 
-`SelectionOptions` — `{ mode?: "single" \| "multiple", isSelectable?: (row, index) => boolean, onChange?: (ids, rows) => void }`
+`SelectionOptions` — `{ mode?: "single" \| "multiple", isSelectable?: (row, index) => boolean, onChange?: (ids, rows) => void }`. A row `isSelectable` refuses renders a disabled checkbox; the header checkbox and shift-click ranges skip it.
 
 ### Presentation
 
@@ -73,11 +73,11 @@ import { Table } from "@trapezium/react"
 | `rowHref` | `(row) => string` | Makes the leading cell a link. |
 | `onRowClick` | `(row, event) => void` | |
 | `rowClassName` | `(row, index) => string \| undefined` | |
-| `emptyState` | `ReactNode` | Replaces the default. |
+| `emptyState` | `ReactNode` | Replaces the default. A `#empty` slot in Vue; a node or string elsewhere. |
 | `emptyMessage` | `string` | Text for the default. |
-| `toolbar` | `ReactNode` | Extra toolbar controls. |
-| `appendRow` | `ReactNode` | A row below the last one. |
-| `footer` | `ReactNode` | Below the table, inside the frame. |
+| `toolbar` | `ReactNode` | Extra toolbar controls. A slot in Vue; a node or string elsewhere. |
+| `appendRow` | `ReactNode` | A row below the last one. A slot in Vue; a node or string elsewhere. |
+| `footer` | `ReactNode` | Below the table, inside the frame. A slot in Vue; a node or string elsewhere. |
 | `buildHref` | `(state) => string` | Renders controls as links. |
 | `linkComponent` | `(props) => ReactNode` | Your router's `Link`. |
 
@@ -203,9 +203,11 @@ All pure `(state, …) => state`. Anything that changes which rows match resets 
 
 ### URL
 
-`stateToSearchParams(state, options?, into?)` · `stateToQueryString` · `stateFromSearchParams` · `stateFromUrl` · `applyStateToUrl(url, state, options?)` · `encodeFilters` · `decodeFilters` · `URL_KEYS` · `DEFAULT_URL_KEYS`
+`stateToSearchParams(state, options?, into?)` · `stateToQueryString` · `stateFromSearchParams` · `stateFromUrl` · `pickUrlState(state, options?)` · `applyStateToUrl(url, state, options?)` · `encodeFilters` · `decodeFilters` · `URL_KEYS` · `DEFAULT_URL_KEYS`
 
 `UrlOptions` — `{ include?: UrlStateKey[], prefix?: string }`
+
+`pickUrlState` returns the keys the URL carries, with defaults filled in — what to pass as a controlled `state` when the URL is the source of truth, so selection and widths stay with the table.
 
 ### Export
 

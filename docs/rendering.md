@@ -107,6 +107,26 @@ The sort and filter controls are yours to place when you take this over.
 
 `appendRow` is the "add one more" affordance at the bottom of the table — a slot rather than a feature, so it can be a link, a form, or a total.
 
+The same four places exist in every adapter. In Vue they are slots:
+
+```vue
+<TrapeziumTable :data="rows">
+  <template #toolbar><button @click="create">New invoice</button></template>
+  <template #appendRow><button @click="create">Add another</button></template>
+  <template #footer>{{ rows.length }} invoices</template>
+  <template #empty><p>No invoices yet</p></template>
+</TrapeziumTable>
+```
+
+In Svelte and plain JavaScript they are the same option names as React — `toolbar`, `appendRow`, `footer`, `emptyState` — taking a DOM node or a string:
+
+```js
+const button = document.createElement("button")
+button.textContent = "New invoice"
+
+createTable("#invoices", { data: rows, toolbar: button, footer: `${rows.length} invoices` })
+```
+
 ## Rendering everything yourself
 
 `useTable` is the whole model with no markup: rows, columns, state and the actions that change it. Use it when you want Trapezium's engine and your own DOM.
