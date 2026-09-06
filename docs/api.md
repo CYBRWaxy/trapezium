@@ -84,8 +84,8 @@ import { Table } from "@trapezium/react"
 
 ## `ColumnDef`
 
-| Property | Type | Default |
-|---|---|---|
+| Property | Type | Default | |
+|---|---|---|---|
 | `key` | `string` | required |
 | `header` | `string` | humanised key |
 | `type` | `string` | inferred |

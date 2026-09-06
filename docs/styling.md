@@ -161,6 +161,11 @@ a particular number of lines regardless of the row, say so:
 />
 ```
 
+The line count leans on `round()`, `atan2()` and the `lh` unit, which every
+current engine has: Chrome 125, Firefox 120 and Safari 16.4 or later. An older
+browser still gets rows of the right height with the overflow clipped; it only
+loses the ellipsis on the last line.
+
 Wrapped rows hang from the top, so the first line of every column lines up with
 the first line of the others. `fixed` and exact rows stay vertically centred,
 the way every other row in the library is.
@@ -179,6 +184,11 @@ is the point of density. To size the header on its own, set its token:
 rows of differing heights stays cheap — the rows already on screen keep their
 elements and their place, and the scroll position is not disturbed. That is what
 makes auto height usable on an infinite list at all.
+
+The rows already on screen are recognised by identity, so append what you
+fetched to the array you have rather than mapping a fresh copy of everything —
+a row that is a new object is a row that has changed, and it is rebuilt.
+Toggling `loading` around the fetch is fine, in every adapter.
 
 One thing to know, because it is the one way the rows above can still move: a
 column with no `width` is sized from its content, so if the first page is not
