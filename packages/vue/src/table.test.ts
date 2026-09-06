@@ -194,6 +194,57 @@ describe("custom cells", () => {
     expect(chips.every((chip) => chip.textContent !== "")).toBe(true)
   })
 
+  it("keeps the rows on screen while loading is toggled around an appended page", async () => {
+    /*
+      Every prop but `data` reaches the DOM renderer through `setOptions`, and
+      the adapted columns used to be rebuilt on each call — new renderer
+      functions every time, which looked like a new set of columns and threw
+      every row away. A server-side "load more" toggles `loading` around each
+      fetch, so that is the sequence checked here.
+    */
+    const Chip = defineComponent({
+      props: { label: { type: String, required: true } },
+      render() {
+        return h("strong", { class: "chip" }, this.label)
+      },
+    })
+
+    const many = ref(Array.from({ length: 10 }, (_, index) => ({ id: String(index), name: `P${index}` })))
+    const loading = ref(false)
+
+    const columns = [{ key: "name", render: ({ value }: { value: unknown }) => h(Chip, { label: String(value) }) }]
+    const pagination = { mode: "loadMore" as const, pageSize: 10 }
+    const getRowId = (row: Record<string, unknown>) => String(row["id"])
+
+    const host = mount(
+      defineComponent(
+        () => () => h(Table, { data: many.value, loading: loading.value, getRowId, pagination, columns }),
+      ),
+    )
+    await nextTick()
+    const first = [...host.querySelectorAll("tbody tr")]
+    expect(first).toHaveLength(10)
+
+    loading.value = true
+    await nextTick()
+    // By identity: `toEqual` on DOM nodes is `isEqualNode`, which a rebuilt row passes.
+    expect([...host.querySelectorAll("tbody tr")].every((row, index) => row === first[index])).toBe(true)
+
+    many.value = [
+      ...many.value,
+      ...Array.from({ length: 10 }, (_, index) => ({ id: String(100 + index), name: `Q${index}` })),
+    ]
+    loading.value = false
+    await nextTick()
+    host.querySelector<HTMLButtonElement>(".tpz-pagination button")!.click()
+    await nextTick()
+
+    const after = [...host.querySelectorAll("tbody tr")]
+    expect(after).toHaveLength(20)
+    expect(after.slice(0, 10).every((row, index) => row === first[index])).toBe(true)
+    expect([...host.querySelectorAll(".chip")].map((chip) => chip.textContent)).toContain("Q9")
+  })
+
   it("still accepts a plain string or DOM node", async () => {
     const host = mount(
       defineComponent(() => () =>

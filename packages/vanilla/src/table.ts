@@ -1779,13 +1779,17 @@ export function createTable<TRow extends AnyRow>(
       settings = { ...settings, ...next }
 
       /*
-        Anything can have changed here — the columns, a custom type, a cell
-        renderer — and most of it is not visible from the outside of a resolved
-        column. So the next render rebuilds rather than trying to work out
-        whether it needs to. `setData` is the hot path, and it does not come
-        through here.
+        Most of what can change here is not visible from the outside of a
+        resolved column — a custom type, a cell renderer, a class map — so a
+        changed option makes the next render rebuild rather than trying to work
+        out whether it needs to. The exceptions are the options that never reach
+        a row's markup. `loading` is the one that matters: flipping it while the
+        next page is fetched is how every server-side append works, and the Vue
+        and Svelte adapters route it through here, so treating it as a change
+        would throw away the rows on screen at exactly the moment the cheap path
+        exists for.
       */
-      generation += 1
+      if (changedKeys(next, previous).some((key) => !PASSIVE_OPTIONS.has(key))) generation += 1
 
       /*
         Two settings also live in the state, which is the table's to change once
@@ -1822,6 +1826,48 @@ export function createTable<TRow extends AnyRow>(
 }
 
 /* ── Helpers shared with the other adapters' behaviour ───────────────────── */
+
+/**
+ * Options that a row's markup never depends on, so changing one of them does
+ * not force the rows already on screen to be rebuilt. Anything not listed here
+ * is assumed to matter, because a cell that quietly stops updating is the worse
+ * failure. `data` is decided by row identity, not by being passed again.
+ */
+const PASSIVE_OPTIONS: ReadonlySet<string> = new Set([
+  "data",
+  "loading",
+  "error",
+  "total",
+  "state",
+  "onStateChange",
+  "onSelectionChange",
+  "density",
+  "densityControl",
+  "columnControl",
+  "export",
+  "search",
+  "theme",
+  "responsive",
+  "stickyHeader",
+  "maxHeight",
+  "rowHeight",
+  "ariaLabel",
+  "caption",
+  "footer",
+  // Read from the settings when the click happens, not when the row was built,
+  // and whether there is one at all is part of the shape. The Vue adapter
+  // hands over a fresh function on every change, so identity means nothing here.
+  "onRowClick",
+])
+
+/** The keys whose value is not the one already held, compared by identity. */
+function changedKeys<T extends object>(next: Partial<T>, previous: T): string[] {
+  const keys: string[] = []
+  for (const key in next) {
+    if (next[key] !== previous[key]) keys.push(key)
+  }
+  return keys
+}
 
 /** The last pinned column on each side gets the shadow that marks the frozen edge. */
 function isPinEdge(columns: ReadonlyArray<{ key: string; pin?: "start" | "end" }>, key: string): boolean {

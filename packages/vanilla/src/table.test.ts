@@ -1145,6 +1145,15 @@ describe("row height", () => {
     return [...host.querySelectorAll("tbody tr")]
   }
 
+  /**
+   * Element identity, not structure. `toEqual` compares DOM nodes with
+   * `isEqualNode`, which a rebuilt row passes — so it cannot tell a row that
+   * was kept from one that was thrown away and built again the same.
+   */
+  function sameNodes(a: Element[], b: Element[]): boolean {
+    return a.length === b.length && a.every((node, index) => node === b[index])
+  }
+
   it("says nothing by default, so the fixed-height stylesheet applies", () => {
     createTable(host, { data: people })
     expect(host.querySelector<HTMLElement>(".tpz")!.dataset["rowHeight"]).toBeUndefined()
@@ -1204,7 +1213,7 @@ describe("row height", () => {
     const second = rows()
     expect(second).toHaveLength(20)
     // The same ten elements, in the same places, untouched.
-    expect(second.slice(0, 10)).toEqual(first)
+    expect(sameNodes(second.slice(0, 10), first)).toBe(true)
     expect(second[10]?.textContent).toContain("P10")
   })
 
@@ -1246,13 +1255,13 @@ describe("row height", () => {
     const before = rows()
     before[4]!.querySelector<HTMLInputElement>(".tpz-checkbox")!.click()
 
-    expect(rows()).toEqual(before)
+    expect(sameNodes(rows(), before)).toBe(true)
     expect((before[4] as HTMLElement).dataset["selected"]).toBe("true")
     expect(host.querySelectorAll("tbody tr[data-selected]")).toHaveLength(1)
 
     // And clears it again, still without a rebuild.
     before[4]!.querySelector<HTMLInputElement>(".tpz-checkbox")!.click()
-    expect(rows()).toEqual(before)
+    expect(sameNodes(rows(), before)).toBe(true)
     expect((before[4] as HTMLElement).dataset["selected"]).toBeUndefined()
   })
 
@@ -1295,6 +1304,51 @@ describe("row height", () => {
     dataRows[4]!.querySelector<HTMLInputElement>(".tpz-checkbox")!.click()
     expect((dataRows[4] as HTMLElement).dataset["selected"]).toBe("true")
     expect(host.querySelectorAll("tbody tr[data-selected]")).toHaveLength(1)
+  })
+
+  it("keeps the rows on screen while loading is toggled around an appended page", () => {
+    /*
+      How a server-side "load more" goes: loading on, fetch, rows appended,
+      loading off. Every step but the append comes through `setOptions`, and
+      for a while any call to it rebuilt the body — which made the cheap path
+      unreachable from the Vue and Svelte adapters, where `loading` is a prop.
+    */
+    const table = createTable(host, {
+      data: many.slice(0, 10),
+      getRowId: (row) => row.id,
+      pagination: { mode: "loadMore", pageSize: 10 },
+    })
+    const first = rows()
+
+    table.setOptions({ loading: true })
+    expect(host.querySelector<HTMLElement>(".tpz")!.dataset["loading"]).toBe("true")
+    expect(sameNodes(rows(), first)).toBe(true)
+
+    table.setOptions({ loading: false, data: many.slice(0, 20) })
+    table.setState({ page: 2 })
+    expect(host.querySelector<HTMLElement>(".tpz")!.dataset["loading"]).toBeUndefined()
+
+    const second = rows()
+    expect(second).toHaveLength(20)
+    expect(sameNodes(second.slice(0, 10), first)).toBe(true)
+  })
+
+  it("puts an appended page above the caller's appended row", () => {
+    const appendRow = document.createElement("span")
+    appendRow.textContent = "New row"
+    const table = createTable(host, {
+      data: many,
+      getRowId: (row) => row.id,
+      pagination: { mode: "loadMore", pageSize: 10 },
+      appendRow,
+    })
+
+    table.setState({ page: 2 })
+
+    const all = [...host.querySelectorAll("tbody tr")]
+    expect(all).toHaveLength(21)
+    expect(all[19]?.textContent).toContain("P19")
+    expect(all[20]?.textContent).toBe("New row")
   })
 
   it("rebuilds when the columns change", () => {

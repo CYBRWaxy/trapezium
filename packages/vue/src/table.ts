@@ -1,5 +1,6 @@
 import {
   Teleport,
+  computed,
   defineComponent,
   h,
   isVNode,
@@ -203,9 +204,18 @@ export const Table = defineComponent({
         }
       })
 
+    /*
+      Once per `columns` prop rather than once per call. The wrapped renderers
+      are new functions each time this runs, so adapting again for a change to
+      an unrelated prop — `loading` flipping while a page is fetched — would
+      look to the DOM renderer like a new set of columns, and it would rebuild
+      every row it had been carefully keeping.
+    */
+    const adaptedColumns = computed(adaptColumns)
+
     const options = (): TableOptions => ({
       data: props.data,
-      columns: adaptColumns() as TableOptions["columns"],
+      columns: adaptedColumns.value as TableOptions["columns"],
       getRowId: props.getRowId,
       state: props.state,
       server: props.server,
