@@ -86,6 +86,8 @@ export type {
   PartialTableState,
   Pin,
   SelectOption,
+  SelectionInput,
+  SelectionOptions,
   Sort,
   SortDirection,
   TableState,

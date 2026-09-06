@@ -49,7 +49,10 @@ export type {
   PaginationOptions,
   PartialTableState,
   SelectOption,
+  SelectionInput,
+  SelectionOptions,
   Sort,
+  TableSlots,
   TableState,
   TypeDef,
 } from "@trapezium/core"
