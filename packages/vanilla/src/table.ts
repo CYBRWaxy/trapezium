@@ -19,6 +19,7 @@ import {
   resolveColumns,
   resolveRowId,
   setFilter,
+  setMatch,
   setOrder,
   setPage,
   setPageSize,
@@ -34,6 +35,11 @@ import {
   toggleSort,
   OPERATOR_LABELS,
   clearFilters,
+  clearWidth,
+  createClasses,
+  resolveSelection,
+  selectRange,
+  selectableIds,
   toSelectOptions,
   type AnyRow,
   type CellContext,
@@ -46,8 +52,11 @@ import {
   type PaginationOptions,
   type PartialTableState,
   type ResolvedColumn,
+  type ResolvedSelection,
   type SelectOption,
+  type SelectionInput,
   type ServerSource,
+  type TableSlots,
   type TableState,
   type TypeDef,
 } from "@trapezium/core"
@@ -101,12 +110,19 @@ export type TableOptions<TRow extends AnyRow = AnyRow> = {
   columnMenu?: boolean
   columnControl?: boolean
   pagination?: boolean | PaginationOptions
-  selection?: boolean | "single" | "multiple"
+  /**
+   * `true` means multiple. The object form adds `isSelectable`, for rows that
+   * must stay unselected, and `onChange`.
+   */
+  selection?: SelectionInput<TRow>
+  /** Convenience for `selection.onChange`. */
   onSelectionChange?: (ids: string[], rows: TRow[]) => void
   export?:
     | boolean
     | {
         filename?: string
+        /** Offer "copy to clipboard" alongside the download. Defaults to true. */
+        clipboard?: boolean
         /**
          * What goes in the file. `matching` — every row the filters and search
          * leave, however many pages that is, which is the default. `page` —
@@ -135,8 +151,28 @@ export type TableOptions<TRow extends AnyRow = AnyRow> = {
   rowHref?: (row: TRow) => string
   onRowClick?: (row: TRow, event: MouseEvent) => void
   rowClassName?: (row: TRow, index: number) => string | undefined
+
+  /** Replaces the "nothing here" state. */
+  emptyState?: Node | string
+  /** Text for the default empty state. */
   emptyMessage?: string
+  /** Extra controls in the toolbar, beside search and columns. */
+  toolbar?: Node | string
+  /** A row pinned below the last one — an "add another" affordance, a total. */
+  appendRow?: Node | string
+  /** Content below the table, inside the frame. */
+  footer?: Node | string
+
+  /** Added to the root element. */
+  className?: string
+  /** Added per slot, on top of the defaults. */
+  classNames?: Partial<TableSlots>
+  /** Drops the default classes so your own styling is the only styling. */
+  unstyled?: boolean
+
+  /** A visible caption above the table. */
   caption?: string
+  /** Describes the table to a screen reader. Use it, or `caption`. */
   ariaLabel?: string
 }
 
@@ -183,15 +219,17 @@ export function createTable<TRow extends AnyRow>(
   */
   const sentinel = el("div", { class: "tpz-sentinel", "aria-hidden": "true" })
   const table = el("table", { class: "tpz-table" })
+  const caption = el("caption", { class: "tpz-caption" })
   const head = el("thead", { class: "tpz-thead" })
   const body = el("tbody", { class: "tpz-tbody" })
+  const footer = el("div", { class: "tpz-footer" })
   const paginationBar = el("div", { class: "tpz-pagination" })
 
   toolbarStart.append(count, chips)
   toolbar.append(toolbarStart, toolbarEnd)
   table.append(head, body)
   scroll.append(table)
-  frame.append(toolbar, scroll, paginationBar)
+  frame.append(toolbar, scroll, footer, paginationBar)
   root.append(frame)
   host.append(root)
 
@@ -203,6 +241,9 @@ export function createTable<TRow extends AnyRow>(
   function buildToolbar() {
     fill(toolbarEnd, [])
     searchInput = undefined
+
+    // The caller's controls come first, as they do in every other adapter.
+    if (settings.toolbar) toolbarEnd.append(settings.toolbar)
 
     if (settings.search) {
       const config = settings.search === true ? {} : settings.search
@@ -220,6 +261,20 @@ export function createTable<TRow extends AnyRow>(
         clearTimeout(searchTimer)
         const value = searchInput?.value ?? ""
         searchTimer = setTimeout(() => update(setSearch(state, value)), config.debounce ?? 150)
+      })
+
+      searchInput.addEventListener("keydown", (event) => {
+        // Enter applies without waiting out the debounce; Escape clears.
+        if (event.key === "Enter") {
+          clearTimeout(searchTimer)
+          update(setSearch(state, searchInput?.value ?? ""))
+        }
+        if (event.key === "Escape" && searchInput?.value) {
+          event.stopPropagation()
+          clearTimeout(searchTimer)
+          searchInput.value = ""
+          update(setSearch(state, ""))
+        }
       })
 
       wrap.append(glyph ?? "", searchInput)
@@ -314,7 +369,7 @@ export function createTable<TRow extends AnyRow>(
             },
             { icon: icon("download") },
           ),
-          menuItem(
+          config.clipboard === false ? null : menuItem(
             "Copy to clipboard",
             () => {
               const { rows, matched, columns } = current()
@@ -348,10 +403,20 @@ export function createTable<TRow extends AnyRow>(
     }
 
     toolbar.style.display =
-      toolbarEnd.childElementCount === 0 && state.filters.length === 0 ? "none" : ""
+      toolbarEnd.childNodes.length === 0 && state.filters.length === 0 ? "none" : ""
   }
 
   /* ── Model ─────────────────────────────────────────────────────────────── */
+
+  /** Selection as configured, with the mode decided. Undefined when it is off. */
+  function selectionOf(): ResolvedSelection<TRow> | undefined {
+    return resolveSelection(settings.selection, settings.onSelectionChange)
+  }
+
+  /** How each slot is classed, after the caller's additions. */
+  function classes() {
+    return createClasses(settings.classNames, settings.unstyled)
+  }
 
   /** Where server-side answers come from, if the caller said. */
   function source(): ServerSource<TRow> | undefined {
@@ -402,12 +467,16 @@ export function createTable<TRow extends AnyRow>(
       lastSelection = key
       const { rows } = current()
       const byId = new Map(rows.map((row, index) => [resolveRowId(row, index, settings.getRowId), row]))
-      settings.onSelectionChange?.(
+      selectionOf()?.onChange?.(
         state.selection,
         state.selection.map((id) => byId.get(id)).filter((row): row is TRow => row !== undefined),
       )
     }
   }
+
+  // Shift-click selects a range, which is the one selection gesture people
+  // expect from a table and almost never get.
+  let lastToggled: string | undefined
 
   /* ── Render ────────────────────────────────────────────────────────────── */
 
@@ -415,20 +484,55 @@ export function createTable<TRow extends AnyRow>(
     const { columns, hidden, rows, total, pageCount, filtered, pagination } = current()
     const types = registry()
     const format = formatting()
-    const selectionMode = settings.selection === true ? "multiple" : settings.selection || undefined
+    const cls = classes()
+    const selection = selectionOf()
+    const selectionMode = selection?.mode
     const columnCount = columns.length + (selectionMode ? 1 : 0)
+    const rowIds = rows.map((row, index) => resolveRowId(row, index, settings.getRowId))
+    const selectable = selectableIds(rows, rowIds, selection?.isSelectable)
+
+    root.className = cls("root", settings.className)
+    frame.className = cls("frame")
+    toolbar.className = cls("toolbar")
+    scroll.className = cls("scroll")
+    table.className = cls("table")
+    head.className = cls("thead")
+    body.className = cls("tbody")
+    footer.className = cls("footer")
+    paginationBar.className = cls("pagination")
 
     root.dataset["density"] = settings.density ?? state.density
     root.dataset["responsive"] = settings.responsive ?? "scroll"
     if (settings.theme) root.dataset["theme"] = settings.theme
+    else delete root.dataset["theme"]
     if (settings.stickyHeader !== false) root.dataset["stickyHeader"] = "true"
+    else delete root.dataset["stickyHeader"]
+    if (settings.loading) root.dataset["loading"] = "true"
+    else delete root.dataset["loading"]
     if (settings.maxHeight !== undefined) {
       root.style.setProperty(
         "--tpz-max-height",
         typeof settings.maxHeight === "number" ? `${String(settings.maxHeight)}px` : settings.maxHeight,
       )
+    } else {
+      root.style.removeProperty("--tpz-max-height")
     }
     if (settings.ariaLabel) table.setAttribute("aria-label", settings.ariaLabel)
+    else table.removeAttribute("aria-label")
+
+    if (settings.caption) {
+      caption.textContent = settings.caption
+      if (!table.contains(caption)) table.prepend(caption)
+    } else {
+      caption.remove()
+    }
+
+    if (settings.footer) {
+      fill(footer, [settings.footer])
+      if (!frame.contains(footer)) paginationBar.before(footer)
+    } else {
+      footer.remove()
+    }
 
     count.textContent =
       state.selection.length > 0
@@ -438,9 +542,9 @@ export function createTable<TRow extends AnyRow>(
     renderChips(columns)
 
     /* Header */
-    const headerRow = el("tr", { class: "tpz-tr" })
-    if (selectionMode) headerRow.append(selectionHeader(rows, selectionMode))
-    for (const column of columns) headerRow.append(headerCell(column, columns))
+    const headerRow = el("tr", { class: cls("headerRow") })
+    if (selectionMode) headerRow.append(selectionHeader(selectable, selectionMode))
+    for (const column of columns) headerRow.append(headerCell(column, columns, cls))
     fill(head, [headerRow])
 
     /* Body */
@@ -456,13 +560,18 @@ export function createTable<TRow extends AnyRow>(
         }
         rendered.push(row)
       }
+      rendered.push(
+        el("tr", { class: "tpz-sr" }, [
+          el("td", { colspan: columnCount, "aria-live": "polite", text: "Loading rows" }),
+        ]),
+      )
     }
 
     if (settings.error) {
       rendered.push(
         el("tr", {}, [
           el("td", { class: "tpz-td", colspan: columnCount, "data-wrap": "true" }, [
-            el("div", { class: "tpz-state", "data-tone": "danger", role: "alert" }, [
+            el("div", { class: cls("empty"), "data-tone": "danger", role: "alert" }, [
               icon("warning", 20, "tpz-state-icon"),
               settings.error,
             ]),
@@ -475,20 +584,21 @@ export function createTable<TRow extends AnyRow>(
       rendered.push(
         el("tr", {}, [
           el("td", { class: "tpz-td", colspan: columnCount, "data-wrap": "true" }, [
-            el("div", { class: "tpz-state" }, [
-              icon("empty", 22, "tpz-state-icon"),
-              filtered ? "No rows match" : (settings.emptyMessage ?? "Nothing to show"),
-            ]),
+            settings.emptyState ??
+              el("div", { class: cls("empty") }, [
+                icon("empty", 22, "tpz-state-icon"),
+                filtered ? "No rows match" : (settings.emptyMessage ?? "Nothing to show"),
+              ]),
           ]),
         ]),
       )
     }
 
     rows.forEach((row, index) => {
-      const id = resolveRowId(row, index, settings.getRowId)
+      const id = rowIds[index] ?? resolveRowId(row, index, settings.getRowId)
       const selected = state.selection.includes(id)
       const tr = el("tr", {
-        class: ["tpz-tr", settings.rowClassName?.(row, index)].filter(Boolean).join(" "),
+        class: cls("row", settings.rowClassName?.(row, index)),
         "data-selected": selected ? "true" : undefined,
         "data-clickable": settings.onRowClick ? "true" : undefined,
       })
@@ -504,22 +614,38 @@ export function createTable<TRow extends AnyRow>(
           "aria-label": `Select row ${String(index + 1)}`,
         }) as HTMLInputElement
         box.checked = selected
-        box.addEventListener("click", (event) => event.stopPropagation())
-        box.addEventListener("change", () =>
-          update(toggleSelection(state, id, selectionMode === "single")),
-        )
-        tr.append(el("td", { class: "tpz-td tpz-select-cell", "data-pin": "start", "data-key": "__select" }, [box]))
+        box.disabled = selection?.isSelectable ? !selection.isSelectable(row, index) : false
+
+        // The change event does not carry the modifier keys; the click before
+        // it does, so that is where shift is read.
+        let shift = false
+        box.addEventListener("click", (event) => {
+          event.stopPropagation()
+          shift = event.shiftKey
+        })
+        box.addEventListener("change", () => {
+          if (shift && lastToggled !== undefined && selectionMode !== "single") {
+            // Over the selectable rows only, so a disabled row between two
+            // chosen ones is stepped over rather than swept up.
+            update(selectRange(state, selectable, lastToggled, id, !state.selection.includes(id)))
+            return
+          }
+          lastToggled = id
+          update(toggleSelection(state, id, selectionMode === "single"))
+        })
+        tr.append(el("td", { class: cls("selectCell"), "data-pin": "start", "data-key": "__select" }, [box]))
       }
 
       columns.forEach((column, columnIndex) => {
         const context = cellContext(row, id, index, column, types, format)
         const content = renderCell(context, settings)
         const cell = el("td", {
-          class: ["tpz-td", column.className].filter(Boolean).join(" "),
+          class: cls("cell", column.className),
           "data-align": column.align,
           "data-mono": column.mono ? undefined : "false",
           "data-wrap": column.wrap ? "true" : undefined,
           "data-pin": column.pin,
+          "data-pin-edge": isPinEdge(columns, column.key) ? column.pin : undefined,
           "data-key": column.key,
           "data-label": column.header,
         })
@@ -538,6 +664,12 @@ export function createTable<TRow extends AnyRow>(
 
       rendered.push(tr)
     })
+
+    if (settings.appendRow) {
+      rendered.push(
+        el("tr", { class: cls("row") }, [el("td", { class: "tpz-td", colspan: columnCount }, [settings.appendRow])]),
+      )
+    }
 
     fill(body, rendered)
     applyPinOffsets()
@@ -575,7 +707,8 @@ export function createTable<TRow extends AnyRow>(
     }
   }
 
-  function selectionHeader(rows: readonly TRow[], mode: "single" | "multiple"): HTMLElement {
+  /** The header cell above the checkboxes. `ids` are the rows that may be selected. */
+  function selectionHeader(ids: readonly string[], mode: "single" | "multiple"): HTMLElement {
     const cell = el("th", {
       scope: "col",
       class: "tpz-th tpz-select-cell",
@@ -584,7 +717,6 @@ export function createTable<TRow extends AnyRow>(
     })
 
     if (mode === "multiple") {
-      const ids = rows.map((row, index) => resolveRowId(row, index, settings.getRowId))
       const selectedHere = ids.filter((id) => state.selection.includes(id)).length
       const all = ids.length > 0 && selectedHere === ids.length
 
@@ -605,6 +737,7 @@ export function createTable<TRow extends AnyRow>(
   function headerCell(
     column: ResolvedColumn<TRow, Node | string>,
     columns: ResolvedColumn<TRow, Node | string>[],
+    cls: ReturnType<typeof classes>,
   ): HTMLElement {
     const sort = state.sort.find((entry) => entry.key === column.key)
     const filter = state.filters.find((entry) => entry.key === column.key)
@@ -613,14 +746,17 @@ export function createTable<TRow extends AnyRow>(
 
     const cell = el("th", {
       scope: "col",
-      class: "tpz-th",
+      class: cls("headerCell", column.headerClassName),
       "data-align": column.align,
       "data-pin": column.pin,
+      "data-pin-edge": isPinEdge(columns, column.key) ? column.pin : undefined,
       "data-key": column.key,
       "data-filtered": filter ? "true" : undefined,
       "aria-sort": sort ? (sort.direction === "asc" ? "ascending" : "descending") : "none",
     })
     if (column.width) cell.style.width = `${String(column.width)}px`
+    if (column.minWidth) cell.style.minWidth = `${String(column.minWidth)}px`
+    if (column.maxWidth) cell.style.maxWidth = `${String(column.maxWidth)}px`
 
     const inner = el("div", { class: "tpz-th-inner" })
     const reorderable = settings.reorderable !== false && column.reorderable !== false && !column.pin
@@ -661,7 +797,7 @@ export function createTable<TRow extends AnyRow>(
     }
 
     if (settings.resizable !== false && column.resizable !== false) {
-      inner.append(resizeHandle(cell, column.key))
+      inner.append(resizeHandle(cell, column))
     }
 
     cell.append(inner)
@@ -746,8 +882,12 @@ export function createTable<TRow extends AnyRow>(
     return provider
   }
 
-  function resizeHandle(cell: HTMLElement, key: string): HTMLElement {
-    const handle = el("button", { type: "button", class: "tpz-resizer", "aria-label": `Resize column` })
+  function resizeHandle(cell: HTMLElement, column: ResolvedColumn<TRow, Node | string>): HTMLElement {
+    const key = column.key
+    const handle = el("button", { type: "button", class: "tpz-resizer", "aria-label": `Resize ${column.header}` })
+
+    // A double-click forgets the dragged width, so the column sizes itself again.
+    handle.addEventListener("dblclick", () => update(clearWidth(state, key)))
 
     handle.addEventListener("pointerdown", (event) => {
       event.preventDefault()
@@ -790,6 +930,7 @@ export function createTable<TRow extends AnyRow>(
     keys: string[],
   ) {
     const filter = state.filters.find((entry) => entry.key === column.key)
+    const sort = state.sort.find((entry) => entry.key === column.key)
 
     openMenuAt({ anchor, label: `${column.header} column`, theme: settings.theme }, (close) => {
       const items: Array<Node | null> = []
@@ -804,6 +945,12 @@ export function createTable<TRow extends AnyRow>(
             update({ ...state, sort: [{ key: column.key, direction: "desc" }], page: 1 })
             close()
           }, { icon: icon("sortDescending") }),
+          sort
+            ? menuItem("Clear sort", () => {
+                update({ ...state, sort: [] })
+                close()
+              }, { icon: icon("close") })
+            : null,
           menuSeparator(),
         )
       }
@@ -1171,6 +1318,13 @@ export function createTable<TRow extends AnyRow>(
       return el("span", { class: "tpz-chip" }, [`${name} ${operator} ${value}`.trim(), remove])
     })
 
+    if (state.filters.length > 1) {
+      // Reads as the rule being applied, not as a setting to decode.
+      const match = el("button", { type: "button", class: "tpz-btn", text: state.match === "all" ? "Match all" : "Match any" })
+      match.addEventListener("click", () => update(setMatch(state, state.match === "all" ? "any" : "all")))
+      nodes.push(match)
+    }
+
     const clear = el("button", { type: "button", class: "tpz-btn", text: "Clear" })
     clear.addEventListener("click", () => update(clearFilters(state)))
     nodes.push(clear)
@@ -1374,6 +1528,13 @@ export function createTable<TRow extends AnyRow>(
 }
 
 /* ── Helpers shared with the other adapters' behaviour ───────────────────── */
+
+/** The last pinned column on each side gets the shadow that marks the frozen edge. */
+function isPinEdge(columns: ReadonlyArray<{ key: string; pin?: "start" | "end" }>, key: string): boolean {
+  const starts = columns.filter((column) => column.pin === "start")
+  const ends = columns.filter((column) => column.pin === "end")
+  return starts[starts.length - 1]?.key === key || ends[0]?.key === key
+}
 
 function paginationOf<TRow extends AnyRow>(options: TableOptions<TRow>) {
   if (options.pagination === false) return undefined

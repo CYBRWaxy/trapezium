@@ -116,6 +116,236 @@ describe("selection", () => {
     host.querySelector<HTMLInputElement>("thead .tpz-select-cell input")!.click()
     expect(table.getSelection()).toEqual(["1", "2", "3"])
   })
+
+  const boxes = () => [...host.querySelectorAll<HTMLInputElement>("tbody .tpz-select-cell input")]
+
+  /** A click with shift held. The browser toggles the box and fires change itself. */
+  const shiftClick = (box: HTMLInputElement) => {
+    box.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, shiftKey: true }))
+  }
+
+  it("selects a range with shift held", () => {
+    const table = createTable(host, { data: people, selection: true })
+
+    boxes()[0]!.click()
+    shiftClick(boxes()[2]!)
+
+    expect(table.getSelection()).toEqual(["1", "2", "3"])
+  })
+
+  it("takes the options form, with its own onChange", () => {
+    const onChange = vi.fn()
+    createTable(host, { data: people, selection: { mode: "single", onChange } })
+
+    expect(boxes()[0]?.type).toBe("radio")
+    boxes()[1]!.click()
+    expect(onChange).toHaveBeenCalledWith(["2"], [people[1]])
+  })
+
+  describe("rows that cannot be selected", () => {
+    const inactiveLocked = { isSelectable: (person: Person) => person.active }
+
+    it("have their checkbox disabled", () => {
+      createTable(host, { data: people, selection: inactiveLocked })
+
+      expect(boxes().map((box) => box.disabled)).toEqual([false, true, false])
+    })
+
+    it("are skipped when the header selects the page, which then reads as complete", () => {
+      const table = createTable(host, { data: people, selection: inactiveLocked })
+
+      host.querySelector<HTMLInputElement>("thead .tpz-select-cell input")!.click()
+
+      expect(table.getSelection()).toEqual(["1", "3"])
+      const header = host.querySelector<HTMLInputElement>("thead .tpz-select-cell input")!
+      expect(header.checked).toBe(true)
+      expect(header.indeterminate).toBe(false)
+    })
+
+    it("are stepped over by a shift-click range", () => {
+      const table = createTable(host, { data: people, selection: inactiveLocked })
+
+      boxes()[0]!.click()
+      shiftClick(boxes()[2]!)
+
+      expect(table.getSelection()).toEqual(["1", "3"])
+    })
+  })
+})
+
+describe("slots", () => {
+  it("puts the caller's controls in the toolbar, ahead of the built-in ones", () => {
+    const button = document.createElement("button")
+    button.textContent = "New person"
+    createTable(host, { data: people, search: true, toolbar: button })
+
+    const end = host.querySelectorAll(".tpz-toolbar-group")[1]!
+    expect(end.firstElementChild).toBe(button)
+    expect(end.querySelector(".tpz-search")).toBeTruthy()
+  })
+
+  it("shows the toolbar for the caller's controls alone", () => {
+    createTable(host, { data: people, columnControl: false, toolbar: "Hello" })
+    expect(host.querySelector<HTMLElement>(".tpz-toolbar")?.style.display).toBe("")
+  })
+
+  it("pins a row below the last one", () => {
+    createTable(host, { data: people, columns: ["name"], appendRow: "Add another" })
+
+    const last = host.querySelector("tbody tr:last-child")!
+    expect(last.textContent).toContain("Add another")
+    expect(last.querySelector("td")?.getAttribute("colspan")).toBe("1")
+    expect(host.querySelectorAll("tbody tr")).toHaveLength(4)
+  })
+
+  it("renders a footer between the rows and the pagination", () => {
+    const table = createTable(host, { data: people, footer: "3 people" })
+
+    const footer = host.querySelector(".tpz-footer")!
+    expect(footer.textContent).toBe("3 people")
+    expect(footer.nextElementSibling?.classList.contains("tpz-pagination")).toBe(true)
+
+    table.setOptions({ footer: undefined })
+    expect(host.querySelector(".tpz-footer")).toBeNull()
+  })
+
+  it("lets the caller replace the empty state", () => {
+    const nothing = document.createElement("p")
+    nothing.textContent = "No people yet"
+    createTable(host, { data: [] as Person[], columns: ["name"], emptyState: nothing })
+
+    expect(host.querySelector("tbody")?.textContent).toContain("No people yet")
+    expect(host.querySelector(".tpz-state")).toBeNull()
+  })
+
+  it("shows a caption when given one", () => {
+    const table = createTable(host, { data: people, caption: "People" })
+    expect(host.querySelector("caption.tpz-caption")?.textContent).toBe("People")
+
+    table.setOptions({ caption: undefined })
+    expect(host.querySelector("caption")).toBeNull()
+  })
+})
+
+describe("taking over the classes", () => {
+  it("adds a class per slot on top of the default", () => {
+    createTable(host, {
+      data: people,
+      columns: ["name"],
+      selection: true,
+      className: "mine",
+      classNames: { frame: "rounded", headerCell: "muted", row: "hover", cell: "mono", selectCell: "tick" },
+    })
+
+    expect(host.querySelector(".tpz")?.className).toBe("tpz mine")
+    expect(host.querySelector(".tpz-frame")?.className).toBe("tpz-frame rounded")
+    expect(host.querySelector("thead th:not(.tpz-select-cell)")?.className).toBe("tpz-th muted")
+    expect(host.querySelector("tbody tr")?.className).toBe("tpz-tr hover")
+    expect(host.querySelector("tbody .tpz-select-cell")?.className).toBe("tpz-td tpz-select-cell tick")
+    expect(host.querySelector("tbody td:not(.tpz-select-cell)")?.className).toBe("tpz-td mono")
+  })
+
+  it("drops the defaults when unstyled", () => {
+    createTable(host, { data: people, columns: ["name"], unstyled: true, classNames: { table: "w-full" } })
+
+    expect(host.querySelector("table")?.className).toBe("w-full")
+    expect(host.querySelector("tbody td")?.className).toBe("")
+  })
+
+  it("keeps a column's own classes", () => {
+    createTable(host, { data: people, columns: [{ key: "name", className: "wide", headerClassName: "loud" }] })
+    expect(host.querySelector("thead th")?.classList.contains("loud")).toBe(true)
+    expect(host.querySelector("tbody td")?.classList.contains("wide")).toBe(true)
+  })
+})
+
+describe("what the other adapters also do", () => {
+  it("marks the table while it is loading, and stops when it is not", () => {
+    const table = createTable(host, { data: people, loading: true })
+    expect(host.querySelector(".tpz")?.getAttribute("data-loading")).toBe("true")
+
+    table.setOptions({ loading: false })
+    expect(host.querySelector(".tpz")?.hasAttribute("data-loading")).toBe(false)
+  })
+
+  it("announces the skeleton to a screen reader", () => {
+    createTable(host, { data: [] as Person[], columns: ["name"], loading: true })
+    expect(host.querySelector("tbody .tpz-sr")?.textContent).toBe("Loading rows")
+  })
+
+  it("marks the frozen edge on the last pinned column", () => {
+    createTable(host, { data: people, columns: [{ key: "name", pin: "start" }, { key: "plan", pin: "start" }, "age"] })
+
+    const edges = [...host.querySelectorAll("thead th")].map((cell) => cell.getAttribute("data-pin-edge"))
+    expect(edges).toEqual([null, "start", null])
+    expect(host.querySelector('tbody td[data-key="plan"]')?.getAttribute("data-pin-edge")).toBe("start")
+  })
+
+  it("offers to clear a sort, once there is one", () => {
+    createTable(host, { data: people, columns: ["name"] })
+    const items = () => [...document.querySelectorAll<HTMLElement>(".tpz-portal [data-menu-item]")].map((node) => node.textContent?.trim())
+
+    host.querySelector<HTMLButtonElement>(".tpz-th-menu")!.click()
+    expect(items()).not.toContain("Clear sort")
+    document.querySelectorAll(".tpz-portal").forEach((node) => node.remove())
+
+    host.querySelector<HTMLButtonElement>(".tpz-th-button")!.click()
+    host.querySelector<HTMLButtonElement>(".tpz-th-menu")!.click()
+    expect(items()).toContain("Clear sort")
+  })
+
+  it("lets two filters be matched either way", () => {
+    const table = createTable(host, {
+      data: people,
+      columns: ["name", "plan"],
+      state: {
+        filters: [
+          { key: "name", operator: "eq", value: "Ada" },
+          { key: "plan", operator: "eq", value: "free" },
+        ],
+      },
+    })
+    expect(host.querySelector(".tpz-count")?.textContent).toBe("0 rows")
+
+    const toggle = [...host.querySelectorAll<HTMLButtonElement>(".tpz-chips .tpz-btn")].find((button) =>
+      button.textContent?.startsWith("Match"),
+    )!
+    expect(toggle.textContent).toBe("Match all")
+
+    toggle.click()
+    expect(table.getState().match).toBe("any")
+    expect(host.querySelector(".tpz-count")?.textContent).toBe("2 rows")
+  })
+
+  it("applies a search on Enter and clears it on Escape", () => {
+    createTable(host, { data: people, columns: ["name"], search: { debounce: 10_000 } })
+    const box = host.querySelector<HTMLInputElement>("input[type=search]")!
+
+    box.value = "zoe"
+    box.dispatchEvent(new Event("input", { bubbles: true }))
+    box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+    expect(cells()).toHaveLength(1)
+
+    box.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+    expect(box.value).toBe("")
+    expect(cells()).toHaveLength(3)
+  })
+
+  it("forgets a dragged width on a double-click", () => {
+    const table = createTable(host, { data: people, columns: ["name"], state: { widths: { name: 300 } } })
+    expect(host.querySelector<HTMLElement>("thead th")?.style.width).toBe("300px")
+
+    host.querySelector<HTMLButtonElement>(".tpz-resizer")!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }))
+    expect(table.getState().widths).toEqual({})
+  })
+
+  it("leaves the clipboard out of the export menu when asked", () => {
+    createTable(host, { data: people, export: { clipboard: false } })
+    host.querySelector<HTMLButtonElement>('[aria-label="Export"]')!.click()
+
+    const items = [...document.querySelectorAll<HTMLElement>(".tpz-portal [data-menu-item]")].map((node) => node.textContent?.trim())
+    expect(items).toEqual(["Download CSV"])
+  })
 })
 
 describe("pagination", () => {
