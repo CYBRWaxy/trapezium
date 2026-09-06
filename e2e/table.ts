@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises"
+
 import type { Locator, Page } from "@playwright/test"
 
 /**
@@ -84,12 +86,15 @@ export class Table {
   }
 }
 
-/** Reads a downloaded file as text, whichever way the browser delivered it. */
+/**
+ * Reads a downloaded file as text, whichever way the browser delivered it.
+ *
+ * Through the finished file rather than a stream: Firefox has handed the
+ * stream over while it was still writing, and a test then read one line of a
+ * forty-line export.
+ */
 export async function downloadedText(page: Page, trigger: () => Promise<void>): Promise<string> {
   const [download] = await Promise.all([page.waitForEvent("download"), trigger()])
-  const stream = await download.createReadStream()
-
-  const chunks: Buffer[] = []
-  for await (const chunk of stream) chunks.push(Buffer.from(chunk))
-  return Buffer.concat(chunks).toString("utf8")
+  const path = await download.path()
+  return readFile(path, "utf8")
 }

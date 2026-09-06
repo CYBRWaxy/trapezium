@@ -135,6 +135,13 @@ for (const example of EXAMPLES) {
       const table = configured(page)
       await table.search().fill("ada")
 
+      // Until every row on screen matches the whole word. Firefox has been
+      // seen applying the search a letter at a time, and a count read while
+      // it still said "a" is not the number the export will use.
+      await expect
+        .poll(async () => (await table.cells()).every((row) => row.join(" ").toLowerCase().includes("ada")))
+        .toBe(true)
+
       // Every matching row, however many pages that is — so the number to
       // compare against is the count, not what fits on screen.
       await expect(table.count()).not.toContainText("120 rows")
