@@ -119,12 +119,6 @@ MIT.
 
 ## Working on it
 
-Node 22, pinned by `.nvmrc` and by `use-node-version` in `.npmrc` — so `pnpm`
-runs on it whatever your shell is set to, and you do not have to think about it.
-Below 20.19 the DOM tests do not run at all: jsdom needs `require(ESM)`, and
-without it every React, Vue, Svelte and vanilla test file fails to load while
-`pnpm test` still reports the core's as passing.
-
 ```sh
 pnpm install
 pnpm build       # every package
