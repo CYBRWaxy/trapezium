@@ -307,6 +307,15 @@
 }
 
 .tpz-td {
+  /*
+    The height a cell's content has to work with, so a renderer can fill a cell
+    without making its row taller: the row height, less the 1px bottom border
+    every cell draws and, in the modes that pad a cell, less that padding.
+    `height: var(--tpz-row-height)` inside a cell asks for a pixel more than
+    the cell has, and the row grows by it.
+  */
+  --tpz-cell-content-height: calc(var(--tpz-row-height) - 1px);
+
   height: var(--tpz-row-height);
 }
 
@@ -370,6 +379,12 @@
   row height you cannot shrink is not a row height. What will not fit ends in
   an ellipsis, the same as it does on one line.
 */
+.tpz-td[data-wrap="true"],
+.tpz[data-row-height="auto"] .tpz-td,
+.tpz[data-row-height="exact"] .tpz-td {
+  --tpz-cell-content-height: calc(var(--tpz-row-height) - 1px - 2 * var(--tpz-cell-padding-y));
+}
+
 .tpz[data-row-height="auto"] .tpz-td,
 .tpz[data-row-height="exact"] .tpz-td {
   padding-block: var(--tpz-cell-padding-y);
@@ -425,9 +440,11 @@
   the content an element of its own to be bounded by, so a cell in this mode
   gets one and the row is finally the height it was asked for.
 
-  Subtracting the padding is what keeps the arithmetic honest: the cell is
-  `border-box`, so its content well is the row height less the padding, and
-  that is exactly what the content is allowed.
+  Subtracting the padding and the border is what keeps the arithmetic honest:
+  the cell is `border-box`, so its content well is the row height less both,
+  and that is exactly what the content is allowed —
+  `--tpz-cell-content-height`. Leaving out the border let content one pixel
+  taller than the well through, and the row with it.
 */
 /*
   How many lines of this cell the row has room for.
@@ -446,7 +463,7 @@
 .tpz[data-row-height="exact"] .tpz-fit {
   --tpz-fit-lines: max(
     1,
-    round(down, tan(atan2(calc(var(--tpz-row-height) - 2 * var(--tpz-cell-padding-y)), 1lh)), 1)
+    round(down, tan(atan2(var(--tpz-cell-content-height), 1lh)), 1)
   );
 
   display: -webkit-box;
@@ -456,7 +473,7 @@
     taller than a line of text, and the row would run over. The height is the
     promise; the clamp is what puts an ellipsis on the end of it.
   */
-  max-height: calc(var(--tpz-row-height) - 2 * var(--tpz-cell-padding-y));
+  max-height: var(--tpz-cell-content-height);
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: var(--tpz-fit-lines);
@@ -470,10 +487,10 @@
 .tpz[data-row-height="exact"] .tpz-clamp {
   --tpz-fit-lines: max(
     1,
-    round(down, tan(atan2(calc(var(--tpz-row-height) - 2 * var(--tpz-cell-padding-y)), 1lh)), 1)
+    round(down, tan(atan2(var(--tpz-cell-content-height), 1lh)), 1)
   );
 
-  max-height: calc(var(--tpz-row-height) - 2 * var(--tpz-cell-padding-y));
+  max-height: var(--tpz-cell-content-height);
   -webkit-line-clamp: min(var(--tpz-cell-lines, 2), var(--tpz-fit-lines));
   line-clamp: min(var(--tpz-cell-lines, 2), var(--tpz-fit-lines));
 }
@@ -483,7 +500,7 @@
 */
 .tpz[data-row-height="exact"] .tpz-td[data-wrap="false"] .tpz-fit {
   display: block;
-  max-height: calc(var(--tpz-row-height) - 2 * var(--tpz-cell-padding-y));
+  max-height: var(--tpz-cell-content-height);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
