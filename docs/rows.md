@@ -101,6 +101,51 @@ Class slots `expandCell`, `detailRow` and `detailCell` take extra classes like e
 
 Each expander is a button named "Show details for row 3" / "Hide details for row 3", with `aria-expanded`, and `aria-controls` pointing at the detail row while it is open. Give the table an `id` when a page has more than one table with detail rows, so those ids stay unique; React falls back to `useId`, the other adapters to `"tpz"`.
 
+## Child rows
+
+One level of rows that belong under another — the lines of an order, the sessions of a booking, the subtasks of a task. A row names its parent:
+
+```tsx
+<Table data={lines} getParentId={(row) => row.order_id} />
+```
+
+Every row whose parent is in `data` is drawn directly under it, indented, and the parent's leading cell gets a toggle that folds its children away. Rows are given flat, as a query returns them; the table does the grouping.
+
+### What goes where
+
+- **Sorting** orders the parents, and each parent's children among themselves, by the same columns. A child never leaves its parent.
+- **Filtering and search** look at every row on its own. A parent is shown when it matches, or when any of its children does — then as *context*, quieter (`data-context="true"`), so a matching child is never left floating without the row it belongs to. A parent that matches with no child that does is shown alone. A child is shown when it matches.
+- **Paging** counts parents. A page of 25 is 25 families, each with all of its matching children, so a parent and its children are never split across two pages. The total — "40 rows", and the pagination's "1–25 of 40" — counts families too.
+- **Folding** a parent is `state.collapsed`, an array of parent ids, so it is controlled, saved and — with `include: [...DEFAULT_URL_KEYS, "collapsed"]` — carried in the URL as `fold=`. Children are shown until their parent is folded. Folding is presentation: folded children still match and are still exported.
+
+### Children are rows
+
+They are selected (the header checkbox selects the children on screen as well as the parents), edited, detailed and exported like any other row. An export keeps each child under its parent. Selecting a parent does not select its children.
+
+### The edges
+
+- A row whose parent is not in `data` is shown as a row of its own. In server mode that is a child whose parent is on another page — send each page as whole families.
+- One level only. A row whose parent is itself a child goes under the top of that chain, at the same depth as its parent; a chain that loops back on itself is shown as rows of their own.
+- Rows need ids of their own (`getRowId`, or an `id` field): a parent is found by its id.
+
+### Server mode
+
+The table groups the page it is given — children under their parents, in the order given — and folds what the state says. It filters, sorts and pages nothing; `total` is yours, and counts whatever your pages count.
+
+### Styling and the renderer hook
+
+A child row has `data-depth="1"`, a parent with children `data-parent="true"`, a context parent `data-context="true"`. The leading cell starts with `.tpz-tree` — the toggle, `.tpz-tree-toggle`, on a parent; an indent with a connector on a child. `rowClassName(row, index, info)` gets the row's place as its third argument, `{ depth, parentId, childCount, context }`, for anything the attributes do not cover.
+
+### Accessibility
+
+The toggle is a button named "Hide 2 child rows of row 3" / "Show …", with `aria-expanded`. With `cellNavigation` the table is a `role="treegrid"`, each row carries `aria-level`, and a parent `aria-expanded`.
+
+In code: `toggleCollapsed(state, parentId)` · `setCollapsed(state, parentIds, collapsed)` · `isCollapsed(state, parentId)` · `parentIdsWithChildren(rows, getParentId, getRowId?)` — "collapse all" is `setCollapsed(state, parentIdsWithChildren(rows, getParentId), true)`.
+
+### Not grouping
+
+Child rows are rows the data already relates — not rows the table invents by grouping on a column, with no totals and no levels below the first. Grouping and aggregation are a different feature, and multi-level trees are out of scope.
+
 ## Row clicks
 
 `onRowClick(row, event)` fires on a click anywhere in a row that was not on a control inside it. A link, a button, an input, a select, a label, a `[role="menu…"]` element or anything marked `data-tpz-interactive` is left to itself, so a button rendered in a cell never also opens the row. `isInteractiveTarget(event.target, row)` and `INTERACTIVE_SELECTOR` are exported for anyone building the same rule into their own gestures.

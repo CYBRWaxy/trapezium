@@ -47,7 +47,8 @@ columnMenu ·
 columnControl · pagination · selection · onSelectionChange(ids, rows) · export · density ·
 densityControl · responsive("scroll"|"cards") · stickyHeader · maxHeight ·
 rowHeight("fixed"|"auto"|number) · types · format ·
-rowHref(row) · onRowClick(row, event) · rowClassName(row, index) · detail · cellNavigation ·
+rowHref(row) · onRowClick(row, event) · rowClassName(row, index, info) · detail · getParentId(row) ·
+cellNavigation ·
 onCellEdit(edit) · editTrigger("click"|"doubleClick") · emptyState · emptyMessage ·
 toolbar · appendRow · footer · buildHref(state) · linkComponent (React) · onNavigate(href, event) ·
 className · classNames ·
@@ -245,6 +246,27 @@ on first open, then hides on close. In code: toggleExpanded(state, id) · setExp
 open) · collapseAll(state) · isExpanded(state, id). Vue: render may return a VNode; plain JS and
 Svelte: a node or a string. Pass `id` when a page has several tables with detail rows.
 
+## Child rows (one level)
+
+    <Table data={flatRows} getParentId={(row) => row.order_id /* or null */} />
+
+Rows are given flat; a row whose parent id is in data is drawn directly under it, indented, and the
+parent's leading cell gets a toggle (aria-expanded) that folds its children: state.collapsed:
+string[] (parent ids; children shown unless named). Sorting orders parents, and children among
+themselves. Filters/search test each row on its own: a parent is shown if it matches OR any child
+matches (then as context: data-context="true", muted); a parent matching with no matching child is
+shown alone; a child is shown if it matches. Paging and totals count parents (families): a parent
+and its children are never split across pages. Folding is presentation only: folded children are
+still matched and exported. Children are rows: selectable, editable, exportable (export keeps them
+under their parent). Missing parent → shown as its own row (server mode: send whole families).
+Deeper chains go under the top ancestor; loops stand alone. Server mode: groups the page given, no
+filtering/sorting/paging. rowClassName(row, index, info) with info = { depth: 0|1, parentId,
+childCount, context }; attributes data-depth="1", data-parent, data-context; .tpz-tree slot and
+.tpz-tree-toggle in the leading cell. With cellNavigation the table is role="treegrid" with
+aria-level/aria-expanded on rows. URL: include "collapsed" → fold=. In code: toggleCollapsed,
+setCollapsed, isCollapsed, parentIdsWithChildren(rows, getParentId) (for collapse all). Not
+grouping, not aggregation, not multi-level trees.
+
 onRowClick (and toggleOnRowClick) ignore clicks on controls inside the row: a[href], button,
 input, select, textarea, label, [role=menu*], [role=button] and the like, or anything with
 data-tpz-interactive. isInteractiveTarget(target, row) is exported.
@@ -314,10 +336,11 @@ One serialisable object:
     { sort: [{key, direction}], filters: [{key, operator, value}], match: "all"|"any", search,
       page /* 1-based */, pageSize, selection: string[], order: string[], hidden: string[],
       widths: Record<string, number>, pinned: Record<string, "start"|"end">, density,
-      expanded /* row ids with an open detail */, focus /* active cell: { rowId, key?, align? } | null */ }
+      expanded /* row ids with an open detail */, collapsed /* parents with folded children */,
+      focus /* active cell: { rowId, key?, align? } | null */ }
 
-Keys added since 0.3.0 (expanded, focus) are optional in the TableState type; the table fills them
-in ([] and null).
+Keys added since 0.3.0 (expanded, collapsed, focus) are optional in the TableState type; the table
+fills them in ([], [] and null).
 
 Controlled with `state` + `onStateChange`; uncontrolled with `defaultState`. A controlled `state`
 controls exactly the keys it has.

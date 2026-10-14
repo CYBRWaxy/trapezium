@@ -85,7 +85,8 @@ import { Table } from "@trapezium/react"
 | `format` | `Partial<FormatContext>` | Locale, timezone, currency, empty text. |
 | `rowHref` | `(row) => string` | Makes the leading cell a link. |
 | `onRowClick` | `(row, event) => void` | A click anywhere in the row except on a control inside it — a link, button, input, select, label, menu, or anything marked `data-tpz-interactive`. |
-| `rowClassName` | `(row, index) => string \| undefined` | |
+| `rowClassName` | `(row, index, info?) => string \| undefined` | With child rows, `info` is the row's `RowInfo` — `{ depth, parentId, childCount, context }`. |
+| `getParentId` | `(row) => string \| null \| undefined` | One level of child rows, drawn under their parent and folded with `state.collapsed`. Sorted among themselves, a parent shown as context for a matching child, never split across pages — pages and totals count parents. See [rows](rows.md#child-rows). |
 | `emptyState` | `ReactNode` | Replaces the default. A `#empty` slot in Vue; a node or string elsewhere. |
 | `emptyMessage` | `string` | Text for the default. |
 | `toolbar` | `ReactNode` | Extra toolbar controls. A slot in Vue; a node or string elsewhere. |
@@ -171,6 +172,7 @@ Passed as `server` instead of `true`, when the rows come from a server. Both mem
   pinned: Record<string, "start" | "end">
   density: "compact" | "normal" | "relaxed"
   expanded?: string[]   // rows whose detail is open; [] when absent
+  collapsed?: string[]  // parents whose child rows are folded away; [] when absent
   focus?: { rowId: string; key?: string; align?: "start" | "center" | "end" | "nearest" } | null
                         // the active cell or row; setting it scrolls there, highlights it and, with
                         // cellNavigation, focuses it — bringing it onto its page in client mode
@@ -213,7 +215,7 @@ Everything below is exported from `@trapezium/core`, and re-exported from every 
 
 ### State
 
-`DEFAULT_STATE` · `createState(partial?)` · `focusCell(state, rowId, key?, align?)` · `clearFocus(state)` · `toggleExpanded(state, id)` · `setExpanded(state, ids, open)` · `collapseAll(state)` · `isExpanded(state, id)` · `toggleSort(state, key, additive?)` · `setSort` · `addSort(state, key, direction)` · `removeSort(state, key)` · `clearSort` · `resetSort(state, to?)` · `setFilter` · `addFilter` · `removeFilter` · `removeFilterAt` · `clearFilters` · `setColumnSearch(state, key, text)` · `columnSearchText(state, key)` · `setMatch` · `setSearch` · `setPage` · `setPageSize` · `setDensity` · `toggleSelection` · `setSelected` · `clearSelection` · `hideColumn` · `showColumn` · `toggleColumn` · `setOrder` · `setWidth` · `clearWidth` · `setPin` · `togglePin` · `resetView` · `isFiltering`
+`DEFAULT_STATE` · `createState(partial?)` · `toggleCollapsed(state, parentId)` · `setCollapsed(state, parentIds, collapsed)` · `isCollapsed(state, parentId)` · `focusCell(state, rowId, key?, align?)` · `clearFocus(state)` · `toggleExpanded(state, id)` · `setExpanded(state, ids, open)` · `collapseAll(state)` · `isExpanded(state, id)` · `toggleSort(state, key, additive?)` · `setSort` · `addSort(state, key, direction)` · `removeSort(state, key)` · `clearSort` · `resetSort(state, to?)` · `setFilter` · `addFilter` · `removeFilter` · `removeFilterAt` · `clearFilters` · `setColumnSearch(state, key, text)` · `columnSearchText(state, key)` · `setMatch` · `setSearch` · `setPage` · `setPageSize` · `setDensity` · `toggleSelection` · `setSelected` · `clearSelection` · `hideColumn` · `showColumn` · `toggleColumn` · `setOrder` · `setWidth` · `clearWidth` · `setPin` · `togglePin` · `resetView` · `isFiltering`
 
 All pure `(state, …) => state`. Anything that changes which rows match resets `page` to 1.
 
@@ -223,7 +225,7 @@ All pure `(state, …) => state`. Anything that changes which rows match resets 
 
 ### Detail rows and row clicks
 
-`expandableIds(rows, rowIds, detail)` · `isDetailOpen(state, row, id, detail)` · `isInteractiveTarget(target, within)` · `INTERACTIVE_SELECTOR`
+`parentIdsWithChildren(rows, getParentId, getRowId?)` · `getRowsWithChildren(options)` · `expandableIds(rows, rowIds, detail)` · `isDetailOpen(state, row, id, detail)` · `isInteractiveTarget(target, within)` · `INTERACTIVE_SELECTOR`
 
 `expandableIds` is the rows among those given that have a detail — what "expand all" opens. `isDetailOpen` is whether a row's detail shows: named in `state.expanded`, and allowed by `canExpand`. `isInteractiveTarget` is the rule every row gesture follows: true when the click landed on a control inside `within` rather than on the row.
 
@@ -241,7 +243,7 @@ What the adapters use to read the `sortable` and `headerSearch` options the same
 
 ### Pipeline
 
-`getRows(options)` · `sortRows` · `searchRows` · `filterRows` · `pageCount` · `resolveRowId` · `matchesFilter` · `isFilterUsable` · `normaliseFilter` · `rangeFilter(key, low, high)` · `isTextOperator` · `TEXT_OPERATORS` · `filterInputType(column, operator)`
+`getRows(options)` — with `getParentId`, families instead of rows, and `info` per row; with `reveal`, the page a row is on, reported as `page` · `sortRows` · `searchRows` · `filterRows` · `pageCount` · `resolveRowId` · `matchesFilter` · `isFilterUsable` · `normaliseFilter` · `rangeFilter(key, low, high)` · `isTextOperator` · `TEXT_OPERATORS` · `filterInputType(column, operator)`
 
 `matchesFilter` answers `true` for an incomplete filter — one that asks nothing excludes nothing. Drop those with `isFilterUsable` before combining conditions yourself, or a half-typed filter will widen an OR to everything.
 
@@ -269,7 +271,7 @@ The text operators — `contains`, `notContains`, `startsWith`, `endsWith` — a
 
 `stateToSearchParams(state, options?, into?)` · `stateToQueryString` · `stateFromSearchParams` · `stateFromUrl` · `pickUrlState(state, options?)` · `applyStateToUrl(url, state, options?)` · `encodeFilters` · `decodeFilters` · `URL_KEYS` · `DEFAULT_URL_KEYS`
 
-`UrlOptions` — `{ include?: UrlStateKey[], prefix?: string, defaults?: Partial<TableState> }`. `UrlStateKey` is `sort` · `filters` · `match` · `search` · `page` · `pageSize` · `columns` · `pinned` · `density` · `selection` · `widths` · `expanded` · `focus`; the last four are left out unless named in `include`. `focus` is written `at=rowId:key`. `defaults` are the table's own resting values where they differ from the library's — a page size of fifteen, say — and must be passed to every read and write so the two agree.
+`UrlOptions` — `{ include?: UrlStateKey[], prefix?: string, defaults?: Partial<TableState> }`. `UrlStateKey` is `sort` · `filters` · `match` · `search` · `page` · `pageSize` · `columns` · `pinned` · `density` · `selection` · `widths` · `expanded` · `collapsed` · `focus`; the last five are left out unless named in `include`. `collapsed` is written `fold=`, `focus` `at=rowId:key`. `defaults` are the table's own resting values where they differ from the library's — a page size of fifteen, say — and must be passed to every read and write so the two agree.
 
 `pickUrlState` returns the keys the URL carries, with defaults filled in — what to pass as a controlled `state` when the URL is the source of truth, so selection and widths stay with the table.
 
