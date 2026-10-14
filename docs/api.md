@@ -110,7 +110,8 @@ import { Table } from "@trapezium/react"
 | `format` | `(context) => string` | the type's formatter |
 | `formatOptions` | `FormatOptions` | — |
 | `render` | `(context) => ReactNode` | the default renderer |
-| `renderHeader` | `(context) => ReactNode` | the default header |
+| `renderHeader` | `(context) => ReactNode` | the header text | Replaces the header's text; the sort, menu, search and resize controls stay around it. Phrasing content only — it sits inside the sort control, which keeps `header` as its name. |
+| `description` | `string` | — | What the column means: a tooltip on hover or focus, and `aria-describedby` on the header. |
 | `sortable` | `boolean` | the type's |
 | `compare` | `(a, b) => number` | the type's |
 | `searchable` | `boolean` | the type's |

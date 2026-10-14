@@ -119,10 +119,18 @@ import Link from "next/link"
 ## Headers
 
 ```tsx
-{ key: "amount", renderHeader: ({ column, sort }) => <>{column.header} {sort ? "↓" : null}</> }
+{ key: "amount", renderHeader: ({ column }) => <>{column.header} <small className="unit">AUD</small></> }
 ```
 
-The sort and filter controls are yours to place when you take this over.
+`renderHeader` replaces the header's text and nothing else. The type icon (or the search magnifier), the sort control with its arrow and level, the column's menu and the resize handle all stay around it and keep working, and it is given the column's current `sort` so it can follow it. It is drawn inside the sort control, so return phrasing content — text, icons, a badge — and not a link or a button. The control is still named by `header`, so a screen reader hears "Amount" whatever the renderer draws. Every adapter renders it on the server too; in Vue it may return a VNode.
+
+### A description
+
+```tsx
+{ key: "days_overdue", description: "Days since the invoice was due, counting today" }
+```
+
+A plain-text description needs no renderer. It is shown as a tooltip beside the header while the header is hovered or has the keyboard, and linked to the header and its sort control with `aria-describedby`, so a screen reader reads it as well. A faint dotted underline on the header says there is something to read. Escape hides the tooltip. Give the table an `id` when two tables on a page describe columns with the same key.
 
 ## Around the table
 
