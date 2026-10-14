@@ -15,6 +15,7 @@ export type {
   Align,
   AnyRow,
   CellContext,
+  CellFocus,
   ColumnDef,
   ColumnFilter,
   ColumnKey,
@@ -129,12 +130,14 @@ export {
   addFilter,
   addSort,
   clearFilters,
+  clearFocus,
   clearSelection,
   clearSort,
   clearWidth,
   collapseAll,
   columnSearchText,
   createState,
+  focusCell,
   hideColumn,
   isExpanded,
   isFiltering,
@@ -168,6 +171,8 @@ export {
 export { resolveSelection, selectableIds } from "./selection.js"
 export { INTERACTIVE_SELECTOR, isInteractiveTarget } from "./interaction.js"
 export { expandableIds, isDetailOpen } from "./detail.js"
+export { entryCell, isNavigationKey, nextCell } from "./navigation.js"
+export type { NavigationGrid, NavigationKey, NextCellOptions } from "./navigation.js"
 export { canResetSort, resolveSorting, sortLevels, sortPriority, sortsEqual } from "./sorting.js"
 export { HEADER_SEARCH_DEBOUNCE, resolveHeaderSearch } from "./header-search.js"
 export { SLOT_CLASSES, createClasses, cx } from "./classes.js"

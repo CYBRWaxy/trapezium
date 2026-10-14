@@ -43,6 +43,15 @@ export type PipelineOptions<TRow, TNode = unknown> = {
    * — so a column without a list of its own is not a mistake.
    */
   serverDistinct?: boolean
+  /**
+   * A row to bring onto the page: the page shown becomes the one it is on,
+   * whatever `state.page` says, and `TableRows.page` reports it so the adapter
+   * can put it in the state. Client mode only — in server mode the caller
+   * decides which rows are on the page. Ignored when the row does not match.
+   */
+  reveal?: string
+  /** How rows are identified, for `reveal`. Defaults to `resolveRowId`'s rule. */
+  getRowId?: GetRowId<TRow>
 }
 
 /**
@@ -67,6 +76,7 @@ export function getRows<TRow extends AnyRow, TNode = unknown>(
       total,
       totalUnfiltered: total,
       pageCount: pageCount(total, state.pageSize),
+      page: state.page,
       filtered: state.filters.length > 0 || state.search.trim() !== "",
     }
   }
@@ -77,7 +87,7 @@ export function getRows<TRow extends AnyRow, TNode = unknown>(
 
   const total = sorted.length
   const pages = pageCount(total, state.pageSize)
-  const page = clamp(state.page, 1, pages)
+  const page = clamp(revealedPage(sorted, state, options) ?? state.page, 1, pages)
 
   /*
     Append modes show every page loaded so far, not just the current one, so
@@ -94,8 +104,30 @@ export function getRows<TRow extends AnyRow, TNode = unknown>(
     total,
     totalUnfiltered: rows.length,
     pageCount: pages,
+    page,
     filtered: total !== rows.length,
   }
+}
+
+/**
+ * The page a revealed row is on, when it is not on the page already showing.
+ *
+ * In the append modes every page up to the current one is on screen, so a row
+ * on an earlier page is already visible and only a later one moves the page.
+ */
+function revealedPage<TRow extends AnyRow, TNode>(
+  sorted: readonly TRow[],
+  state: TableState,
+  options: PipelineOptions<TRow, TNode>,
+): number | undefined {
+  if (options.reveal === undefined || state.pageSize <= 0) return undefined
+
+  const index = sorted.findIndex((row, at) => resolveRowId(row, at, options.getRowId) === options.reveal)
+  if (index === -1) return undefined
+
+  const page = Math.floor(index / state.pageSize) + 1
+  if (options.accumulate) return Math.max(page, state.page)
+  return page
 }
 
 /*

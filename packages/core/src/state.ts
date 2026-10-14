@@ -11,6 +11,7 @@
  */
 
 import type {
+  CellFocus,
   ColumnFilter,
   Density,
   Pin,
@@ -36,6 +37,7 @@ export const DEFAULT_STATE: TableState = {
   pinned: {},
   density: "normal",
   expanded: [],
+  focus: null,
 }
 
 /** Fills in everything a caller left out. */
@@ -333,6 +335,34 @@ export function collapseAll(state: TableState): TableState {
 /** Whether a row's detail is open. */
 export function isExpanded(state: TableState, id: string): boolean {
   return (state.expanded ?? []).includes(id)
+}
+
+/**
+ * Makes a cell, or a row, the active one — the declarative way to say "go
+ * there": the table scrolls to it, highlights its row and, with cell
+ * navigation on, puts the keyboard on it.
+ *
+ * Returns the same state when nothing would change, so moving onto the cell
+ * that is already active tells nobody anything.
+ */
+export function focusCell(
+  state: TableState,
+  rowId: string,
+  key?: string,
+  align?: CellFocus["align"],
+): TableState {
+  const current = state.focus
+  if (current && current.rowId === rowId && current.key === key && current.align === align) return state
+
+  const focus: CellFocus = { rowId }
+  if (key !== undefined) focus.key = key
+  if (align !== undefined) focus.align = align
+  return { ...state, focus }
+}
+
+/** Nothing active any more. */
+export function clearFocus(state: TableState): TableState {
+  return state.focus ? { ...state, focus: null } : state
 }
 
 /** Everything that affects which rows are shown, cleared in one go. */

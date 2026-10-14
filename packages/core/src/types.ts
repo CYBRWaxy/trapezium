@@ -455,6 +455,30 @@ export type TableState = {
    * is open.
    */
   expanded?: string[]
+  /**
+   * The active cell, or row: where the keyboard is, and what to bring into
+   * view. Setting it from outside — a banner's "show me" link — scrolls the
+   * table to that row, highlights it and, with `cellNavigation` on, moves the
+   * focus there. `null` or absent means nothing is active.
+   *
+   * Optional for the same reason as `expanded`.
+   */
+  focus?: CellFocus | null
+}
+
+/**
+ * A cell, or a whole row, the table should treat as active.
+ *
+ * Without `key` it is the row: highlighted and scrolled to, with the keyboard
+ * landing on its first cell. `align` is where in the scroll area the row is
+ * brought to; it defaults to `"nearest"`, which moves the table as little as
+ * it can.
+ */
+export type CellFocus = {
+  rowId: string
+  /** A column key, or one of the table's own columns: `"__select"`, `"__expand"`. */
+  key?: string
+  align?: "start" | "center" | "end" | "nearest"
 }
 
 /**
@@ -502,6 +526,12 @@ export type TableRows<TRow = AnyRow> = {
   /** Rows given to the table, before anything was applied. */
   totalUnfiltered: number
   pageCount: number
+  /**
+   * The page these rows are, one-based: `state.page` held inside the page
+   * count, or the page a revealed row is on. When it differs from
+   * `state.page` the adapter writes it back, so the state says what is shown.
+   */
+  page: number
   /** True when filters or search removed rows that otherwise exist. */
   filtered: boolean
 }

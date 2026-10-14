@@ -46,6 +46,7 @@ export const URL_KEYS = {
   selection: "sel",
   widths: "w",
   expanded: "open",
+  focus: "at",
 } as const
 
 export type UrlStateKey = keyof typeof URL_KEYS
@@ -57,8 +58,9 @@ export type UrlStateKey = keyof typeof URL_KEYS
  * and means nothing to whoever receives the link, and a dragged width is a
  * local preference rather than part of the view. Open detail rows are left out
  * too, because only some tables have them and a link that reopens somebody's
- * rows is a choice the page should make. All three can be opted into with
- * `include`.
+ * rows is a choice the page should make, and so is the active cell, which
+ * moves with every arrow key. All four can be opted into with `include` — the
+ * active cell is how a link says "this row".
  */
 export const DEFAULT_URL_KEYS: UrlStateKey[] = [
   "sort",
@@ -73,7 +75,10 @@ export const DEFAULT_URL_KEYS: UrlStateKey[] = [
 ]
 
 export type UrlOptions = {
-  /** Which parts of the state to carry. Defaults to everything but selection, widths and open detail rows. */
+  /**
+   * Which parts of the state to carry. Defaults to everything but selection,
+   * widths, open detail rows and the active cell.
+   */
   include?: UrlStateKey[]
   /**
    * The table's own defaults, where they differ from the library's.
@@ -193,6 +198,14 @@ export function stateToSearchParams(
     write("expanded", state.expanded?.length ? state.expanded.map(encodeValue).join(LIST) : undefined)
   }
 
+  if (include.has("focus")) {
+    const focus = state.focus
+    write(
+      "focus",
+      focus ? [focus.rowId, focus.key].filter((part) => part !== undefined).map(encodeValue).join(WITHIN) : undefined,
+    )
+  }
+
   return params
 }
 
@@ -278,6 +291,12 @@ export function stateFromSearchParams(
 
   const expanded = read("expanded")
   if (expanded !== null) state.expanded = splitList(expanded).map(decodeValue)
+
+  const focus = read("focus")
+  if (focus !== null) {
+    const [rowId, key] = focus.split(WITHIN).map(decodeValue)
+    state.focus = rowId ? (key ? { rowId, key } : { rowId }) : null
+  }
 
   return state
 }
@@ -408,6 +427,7 @@ export function pickUrlState(state: TableState, options: UrlOptions = {}): Parti
     else if (key === "selection") picked.selection = state.selection
     else if (key === "widths") picked.widths = state.widths
     else if (key === "expanded") picked.expanded = state.expanded ?? []
+    else if (key === "focus") picked.focus = state.focus ?? null
   }
 
   return picked
