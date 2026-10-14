@@ -525,6 +525,26 @@
   line-height: 0;
 }
 
+/*
+  An auto row hangs its text from the top, so the checkbox hangs with it: its
+  centre on the centre of the first line of text beside it, rather than at the
+  very top of the row while the text starts a padding further down. The 1rem
+  line less the 0.875rem box, halved, is what centres one on the other. An
+  exact row centres everything, the checkbox included, so it needs nothing.
+
+  The browser's own margin on a checkbox has to go for the sum to hold — it is
+  3px above in Chromium and WebKit and none in Firefox, so leaving it put the
+  box in a different place in each.
+*/
+.tpz[data-row-height="auto"] .tpz-td.tpz-select-cell {
+  padding-top: calc(var(--tpz-cell-padding-y) + (var(--tpz-text-cell-leading) - 0.875rem) / 2);
+}
+
+.tpz[data-row-height="auto"] .tpz-td.tpz-select-cell .tpz-checkbox {
+  margin-block: 0;
+  vertical-align: top;
+}
+
 .tpz[data-row-height="exact"] .tpz-td[colspan] {
   height: auto;
   overflow: visible;
