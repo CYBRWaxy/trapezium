@@ -14,6 +14,7 @@ import type {
   PartialTableState,
   ResolvedColumn,
   RowHeight,
+  RowInfo,
   SelectionOptions,
   ServerSource,
   SortOptions,
@@ -300,12 +301,31 @@ export type TableProps<TRow extends AnyRow = AnyRow> = {
    */
   editTrigger?: "click" | "doubleClick"
 
+  /**
+   * One level of child rows: the id of the row this one belongs under, or
+   * `null` for a row that belongs under nothing.
+   *
+   * Children are drawn directly under their parent, with a toggle in the
+   * parent's leading cell that folds them away (`state.collapsed`). They stay
+   * with their parent through everything: sorted among themselves, a parent
+   * shown for the sake of a matching child, never split from it across a
+   * page — pages and totals count parents. Children are rows in every other
+   * way: selected, edited and exported like any other, and exported under
+   * their parent. A row whose parent is missing from `data` is shown as a row
+   * of its own. One level only: deeper rows go under the top of their chain.
+   */
+  getParentId?: (row: TRow) => string | null | undefined
+
   /** Makes each row a link. The leading cell becomes an anchor. */
   rowHref?: (row: TRow) => string
   /** Fires on a click anywhere in the row that was not a control. */
   onRowClick?: (row: TRow, event: React.MouseEvent) => void
-  /** Extra class names per row — a tone for overdue, archived, unread. */
-  rowClassName?: (row: TRow, index: number) => string | undefined
+  /**
+   * Extra class names per row — a tone for overdue, archived, unread. With
+   * child rows, `info` says where the row sits: its depth, its parent, how
+   * many children it has, and whether it is only shown for a child's sake.
+   */
+  rowClassName?: (row: TRow, index: number, info?: RowInfo) => string | undefined
 
   /** Replaces the "nothing here" state. */
   emptyState?: ReactNode

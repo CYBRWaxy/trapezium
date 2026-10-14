@@ -17,6 +17,7 @@ import {
   expandableIds as expandableIdsOf,
   isDetailOpen,
   setExpanded,
+  toggleCollapsed,
   toggleExpanded,
   formatWithType,
   copyText,
@@ -101,6 +102,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
     rows,
     matchedRows,
     rowIds,
+    rowInfo,
     columns,
     hiddenColumns,
     state,
@@ -678,6 +680,15 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
     handlers.current.update((current) => setExpanded(current, [id], false))
   }, [])
 
+  /* ── Child rows ────────────────────────────────────────────────────────── */
+
+  const toggleChildren = useCallback((id: string) => {
+    handlers.current.update((current) => toggleCollapsed(current, id))
+  }, [])
+  const folded = useMemo(() => new Set(state.collapsed ?? []), [state.collapsed])
+  // With cell navigation a table of parents and children is a tree grid, whose rows say their level.
+  const treegrid = navigable && rowInfo !== undefined
+
   /*
     Same trick for the caller's row click: it is nearly always written inline
     at the call site, and a fresh function every render would be enough on its
@@ -816,7 +827,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
             ref={tableRef}
             className={classes("table")}
             aria-label={props["aria-label"]}
-            role={navigable ? "grid" : undefined}
+            role={navigable ? (treegrid ? "treegrid" : "grid") : undefined}
             aria-readonly={navigable ? !editable : undefined}
             onKeyDown={navigable ? onGridKeyDown : undefined}
             onFocus={navigable ? onGridFocus : undefined}
@@ -953,7 +964,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                     types={types}
                     format={format}
                     classes={classes}
-                    className={rowClassName?.(row, rowIndex)}
+                    className={rowClassName?.(row, rowIndex, rowInfo?.[rowIndex])}
                     href={rowHref?.(row)}
                     selected={table.selection.has(id)}
                     selectionMode={selection?.mode}
@@ -973,6 +984,9 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                     editingKey={editing?.rowId === id ? editing.key : undefined}
                     renderEditor={editing?.rowId === id ? renderEditorFor(row, id) : undefined}
                     edits={edits[id]}
+                    tree={treeOf(rowInfo?.[rowIndex], folded.has(id))}
+                    onToggleChildren={rowInfo ? toggleChildren : undefined}
+                    treegrid={treegrid}
                   />
                   {mountDetail && detail && (
                     <DetailRow
@@ -1057,6 +1071,26 @@ function warnAboutServerExport(): void {
       "write the file from whatever you fetch. See " +
       "https://github.com/Gregaly/trapezium/blob/main/docs/server-data.md#exporting",
   )
+}
+
+/**
+ * A row's place in the tree, as the row is given it: primitives only, so a
+ * memoised row is not re-rendered for an object that says nothing new.
+ */
+const TREE_CACHE = new Map<string, { depth: 0 | 1; childCount: number; context: boolean; folded: boolean }>()
+
+function treeOf(
+  info: { depth: 0 | 1; childCount: number; context: boolean } | undefined,
+  folded: boolean,
+): { depth: 0 | 1; childCount: number; context: boolean; folded: boolean } | undefined {
+  if (!info) return undefined
+  const key = `${String(info.depth)}|${String(info.childCount)}|${info.context ? 1 : 0}|${folded ? 1 : 0}`
+  let tree = TREE_CACHE.get(key)
+  if (!tree) {
+    tree = { depth: info.depth, childCount: info.childCount, context: info.context, folded }
+    TREE_CACHE.set(key, tree)
+  }
+  return tree
 }
 
 let warnedAboutEditing = false

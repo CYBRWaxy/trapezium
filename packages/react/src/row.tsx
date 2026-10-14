@@ -79,6 +79,16 @@ export type RowProps<TRow extends AnyRow> = {
    * are none, so the memo holds for every other row.
    */
   edits?: { pending: Record<string, unknown>; failed: Record<string, string> }
+  /**
+   * The row's place in a table with child rows: a child, a parent with
+   * children (folded away or not), or a parent shown only for a child's sake.
+   * Absent when the table has no child rows.
+   */
+  tree?: { depth: 0 | 1; childCount: number; context: boolean; folded: boolean }
+  /** Folds or unfolds a parent's children. Identity-stable, like `onToggle`. */
+  onToggleChildren?: (id: string) => void
+  /** The table is a tree grid, so the row says its level and whether it is open. */
+  treegrid?: boolean
 }
 
 function RowInner<TRow extends AnyRow>({
@@ -109,6 +119,9 @@ function RowInner<TRow extends AnyRow>({
   editingKey,
   renderEditor,
   edits,
+  tree,
+  onToggleChildren,
+  treegrid,
 }: RowProps<TRow>) {
   // Only the active cell is in the tab order; the rest are reached by arrow.
   const tabIndex = (key: string) => (activeKey === undefined ? undefined : activeKey === key ? 0 : -1)
@@ -126,6 +139,11 @@ function RowInner<TRow extends AnyRow>({
       data-expanded={expander?.expanded ? "true" : undefined}
       data-focused={focused ? "true" : undefined}
       data-row-id={id}
+      data-depth={tree?.depth}
+      data-parent={tree && tree.childCount > 0 ? "true" : undefined}
+      data-context={tree?.context ? "true" : undefined}
+      aria-level={treegrid && tree ? tree.depth + 1 : undefined}
+      aria-expanded={treegrid && tree && tree.childCount > 0 ? !tree.folded : undefined}
       onClick={
         clickable
           ? (event) => {
@@ -197,7 +215,7 @@ function RowInner<TRow extends AnyRow>({
         const leading = columnIndex === 0
         const lines = typeof column.wrap === "number" ? column.wrap : undefined
 
-        const inner =
+        const linked =
           leading && href ? (
             Link ? (
               <Link href={href} className="tpz-link tpz-lead">
@@ -210,6 +228,38 @@ function RowInner<TRow extends AnyRow>({
             )
           ) : (
             content
+          )
+
+        /*
+          With child rows the leading cell carries the row's place in the
+          tree: a toggle for a parent, the same width of nothing for a row on
+          its own — so every row's text starts in the same place — and an
+          indent with a connector for a child.
+        */
+        const inner =
+          leading && tree ? (
+            <>
+              <span className="tpz-tree" data-depth={tree.depth}>
+                {tree.childCount > 0 && (
+                  <button
+                    type="button"
+                    className="tpz-tree-toggle"
+                    tabIndex={controlTabIndex}
+                    aria-expanded={!tree.folded}
+                    aria-label={`${tree.folded ? "Show" : "Hide"} ${String(tree.childCount)} child ${tree.childCount === 1 ? "row" : "rows"} of row ${String(rowIndex + 1)}`}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onToggleChildren?.(id)
+                    }}
+                  >
+                    <Icon name="chevronRight" size={12} />
+                  </button>
+                )}
+              </span>
+              {linked}
+            </>
+          ) : (
+            linked
           )
 
         return (

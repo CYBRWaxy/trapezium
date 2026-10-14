@@ -198,8 +198,9 @@ export function useTable<TRow extends AnyRow>(props: TableProps<TRow>) {
         accumulate,
         reveal: pagination ? reveal : undefined,
         getRowId,
+        getParentId: props.getParentId,
       }),
-    [data, visible, state, types, format, server, total, accumulate, pagination, reveal, getRowId],
+    [data, visible, state, types, format, server, total, accumulate, pagination, reveal, getRowId, props.getParentId],
   )
 
   /*
@@ -234,6 +235,8 @@ export function useTable<TRow extends AnyRow>(props: TableProps<TRow>) {
     matchedRows: result.matched,
     /** Ids for those rows, in the same order. */
     rowIds,
+    /** With child rows, where each of those rows sits — depth, parent, children. */
+    rowInfo: result.info,
     /** Matching rows across every page. */
     total: result.total,
     /** The page on screen — `state.page`, or the page a revealed row is on. */
