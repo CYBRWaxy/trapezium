@@ -383,7 +383,7 @@ export function filterOptions(options: readonly SelectOption[], query: string): 
 export function Popup({ anchor, children }: { anchor: HTMLElement | null; children: ReactNode }) {
   const { theme } = useTableContext()
   const popupRef = useRef<HTMLDivElement | null>(null)
-  const [position, setPosition] = useState<{ top: number; left: number; side: string } | undefined>()
+  const [position, setPosition] = useState<{ top: number; left: number; side: string; width: number } | undefined>()
 
   const place = useCallback(() => {
     const target = anchor
@@ -392,14 +392,19 @@ export function Popup({ anchor, children }: { anchor: HTMLElement | null; childr
     const rect = target.getBoundingClientRect()
     const size = popup.getBoundingClientRect()
     const view = target.ownerDocument.defaultView
-    const next = placePopup(
-      rect,
-      { width: size.width, height: size.height },
-      { width: view?.innerWidth ?? 0, height: view?.innerHeight ?? 0 },
-    )
+    const next = {
+      ...placePopup(
+        rect,
+        { width: size.width, height: size.height },
+        { width: view?.innerWidth ?? 0, height: view?.innerHeight ?? 0 },
+      ),
+      width: rect.right - rect.left,
+    }
     // Only a move is a change: placing it where it already is must not render again.
     setPosition((current) =>
-      current && current.top === next.top && current.left === next.left && current.side === next.side ? current : next,
+      current && current.top === next.top && current.left === next.left && current.side === next.side && current.width === next.width
+        ? current
+        : next,
     )
   }, [anchor])
 
@@ -426,7 +431,14 @@ export function Popup({ anchor, children }: { anchor: HTMLElement | null; childr
       className="tpz tpz-portal"
       data-theme={theme}
       data-side={position?.side}
-      style={{ top: position?.top ?? 0, left: position?.left ?? 0, visibility: position ? "visible" : "hidden" }}
+      style={
+        {
+          top: position?.top ?? 0,
+          left: position?.left ?? 0,
+          visibility: position ? "visible" : "hidden",
+          "--tpz-anchor-width": position ? `${String(position.width)}px` : undefined,
+        } as React.CSSProperties
+      }
       ref={popupRef}
     >
       {children}

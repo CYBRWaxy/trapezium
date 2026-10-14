@@ -1,6 +1,15 @@
 import { StrictMode, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { Table, type Column, type Density, type PaginationOptions, type RowHeight } from "@trapezium/react"
+import {
+  Table,
+  createState,
+  focusCell,
+  type Column,
+  type Density,
+  type PaginationOptions,
+  type RowHeight,
+  type TableState,
+} from "@trapezium/react"
 import "@trapezium/react/styles.css"
 
 import { Controls, Segmented, Switch } from "./controls.js"
@@ -188,6 +197,8 @@ function Playground() {
         </p>
       </section>
 
+      <EditingSection theme={theme} />
+
       <section>
         <h2>Rows that size themselves</h2>
         <p className="note">
@@ -254,6 +265,100 @@ function Playground() {
       </section>
     </main>
   )
+}
+
+/**
+ * Editing, detail rows and the keyboard, on rows the page keeps itself — the
+ * table never changes them, it reports each edit and shows what comes back.
+ */
+function EditingSection({ theme }: { theme: "light" | "dark" | undefined }) {
+  const [rows, setRows] = useState(() => invoices.slice(0, 60))
+  const [state, setState] = useState<TableState>(() => createState({ pageSize: 10 }))
+  const [log, setLog] = useState<string[]>([])
+
+  const target = rows[41]
+
+  return (
+    <section id="editing">
+      <h2>Editing, detail rows and the keyboard</h2>
+      <p className="note">
+        Double-click a cell, press Enter on it, or just start typing. Tab moves to the next editable
+        cell, Escape cancels. Arrow keys move between cells. Amounts over 10,000 are refused, and a
+        status change takes a second to save. The chevron opens a row's detail.
+      </p>
+      <div className="toolbar-row">
+        <button
+          type="button"
+          className="jump"
+          onClick={() => target && setState((current) => focusCell(current, target.id, "amount", "center"))}
+        >
+          Show {target?.reference}
+        </button>
+        <span className="note" aria-live="polite">{log[0] ?? "No edits yet"}</span>
+      </div>
+      <Table
+        theme={theme}
+        aria-label="Editable invoices"
+        data={rows}
+        getRowId={(invoice) => invoice.id}
+        state={state}
+        onStateChange={setState}
+        selection
+        pagination={{ pageSize: 10 }}
+        format={{ currency: "AUD", locale: "en-AU", timeZone: "Australia/Sydney" }}
+        detail={{
+          render: ({ row, collapse }) => (
+            <div className="detail">
+              <p>
+                <strong>{row.customer.name}</strong> · {row.customer.email}
+              </p>
+              <p>{row.notes ?? "No notes."}</p>
+              <button type="button" className="row-action" onClick={collapse}>
+                Done
+              </button>
+            </div>
+          ),
+          canExpand: (invoice) => invoice.notes !== null,
+        }}
+        columns={[
+          { key: "reference", header: "Invoice", type: "id" },
+          { key: "customer.name", header: "Customer", editable: true },
+          {
+            key: "amount",
+            type: "currency",
+            editable: (invoice) => !invoice.paid,
+            validate: (value) => (typeof value === "number" && value <= 10_000) || "At most 10,000",
+          },
+          { key: "status", type: "badge", formatOptions: { options: STATUS_OPTIONS }, editable: true },
+          { key: "due_date", header: "Due", type: "date", editable: true },
+          { key: "paid", type: "boolean", editable: true },
+        ]}
+        onCellEdit={(edit) => {
+          setLog((current) => [`${edit.key} of ${edit.rowId}: ${String(edit.previousValue)} → ${String(edit.value)}`, ...current])
+          const apply = () =>
+            setRows((current) =>
+              current.map((invoice) =>
+                invoice.id === edit.rowId ? setPath(invoice, edit.key, edit.value) : invoice,
+              ),
+            )
+          if (edit.key !== "status") {
+            apply()
+            return
+          }
+          return new Promise<void>((resolve) => setTimeout(() => {
+            apply()
+            resolve()
+          }, 1000))
+        }}
+      />
+    </section>
+  )
+}
+
+/** A copy of an invoice with one field changed, following a dotted key. */
+function setPath(invoice: Invoice, key: string, value: unknown): Invoice {
+  if (key === "customer.name") return { ...invoice, customer: { ...invoice.customer, name: String(value) } }
+  return { ...invoice, [key]: value }
 }
 
 createRoot(document.querySelector("#root")!).render(

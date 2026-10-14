@@ -916,8 +916,21 @@
   outline-color: var(--tpz-danger);
 }
 
+/* A number box's stepper has no room in a cell, and the arrow keys already step it. */
+.tpz-editor-input[type="number"] {
+  appearance: textfield;
+}
+
+.tpz-editor-input[type="number"]::-webkit-inner-spin-button,
+.tpz-editor-input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
 /* The choices of a list editor, drawn outside the table like a menu. */
+/* At least as wide as the cell it belongs to — `--tpz-anchor-width` is set on the popup. */
 .tpz-editor-list {
+  min-width: max(11rem, var(--tpz-anchor-width, 0px));
   max-height: 15rem;
   overflow: auto;
   overscroll-behavior: contain;

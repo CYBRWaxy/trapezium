@@ -69,6 +69,7 @@ export function openPopup(anchor: HTMLElement, content: HTMLElement, theme: stri
     const position = placePopup(rect, { width: size.width, height: size.height }, { width: window.innerWidth, height: window.innerHeight })
     wrapper.style.top = `${String(position.top)}px`
     wrapper.style.left = `${String(position.left)}px`
+    wrapper.style.setProperty("--tpz-anchor-width", `${String(rect.width)}px`)
     wrapper.dataset["side"] = position.side
     wrapper.style.visibility = ""
   }
