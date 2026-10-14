@@ -105,6 +105,9 @@
   --tpz-selected: color-mix(in oklab, var(--tpz-primary) 5%, transparent);
   --tpz-detail-bg: color-mix(in oklab, var(--tpz-muted) 35%, var(--tpz-surface));
   --tpz-focused: color-mix(in oklab, var(--tpz-primary) 9%, transparent);
+  --tpz-pinned-bg: color-mix(in oklab, var(--tpz-muted) 30%, var(--tpz-surface));
+  /* How far down the scroll area a pinned row starts: under the header when the header sticks. */
+  --tpz-sticky-top: 0px;
   --tpz-focus-ring: var(--tpz-ring);
   --tpz-focus: 0 0 0 2px color-mix(in oklab, var(--tpz-ring) 45%, transparent);
 
@@ -985,6 +988,81 @@
   box-shadow: inset 2px 0 0 var(--tpz-danger);
 }
 
+/* ── Pinned rows ───────────────────────────────────────────────────────── */
+
+.tpz[data-sticky-header="true"] {
+  --tpz-sticky-top: var(--tpz-header-height);
+}
+
+/*
+  Rows held at the top and bottom, outside the data, in bodies of their own.
+  Every cell sticks, at its row's distance from the edge — measured once the
+  table is in a browser, a row height each until then.
+
+  Opaque, like a frozen column, because the body scrolls underneath; the
+  hover and active tints are painted over the top rather than in place of the
+  background, which would let the scrolled rows show through.
+*/
+.tpz-pinned-body .tpz-td {
+  position: sticky;
+  z-index: 15;
+}
+
+.tpz-pinned-body .tpz-td[data-pin] {
+  z-index: 25;
+}
+
+.tpz-pinned-body[data-pinned="top"] .tpz-td {
+  top: calc(var(--tpz-sticky-top) + var(--tpz-pinned-offset, 0px));
+}
+
+.tpz-pinned-body[data-pinned="bottom"] .tpz-td {
+  bottom: var(--tpz-pinned-offset, 0px);
+}
+
+.tpz-pinned-body .tpz-tr > .tpz-td,
+.tpz-pinned-body .tpz-tr:hover > .tpz-td,
+.tpz-pinned-body .tpz-tr[data-focused="true"] > .tpz-td {
+  background: var(--tpz-pinned-bg);
+}
+
+.tpz-pinned-body .tpz-td::after {
+  position: absolute;
+  z-index: -1;
+  background: transparent;
+  content: "";
+  inset: 0;
+  pointer-events: none;
+}
+
+.tpz-pinned-body .tpz-tr:hover > .tpz-td::after {
+  background: var(--tpz-hover);
+}
+
+.tpz-pinned-body .tpz-tr[data-focused="true"] > .tpz-td::after {
+  background: var(--tpz-focused);
+}
+
+/* A line between the pinned rows and the data, wherever the data has scrolled to. */
+.tpz-pinned-body[data-pinned="top"] .tpz-tr:last-child > .tpz-td {
+  border-bottom: 1px solid var(--tpz-border);
+  box-shadow: 0 4px 6px -6px rgb(0 0 0 / 25%);
+}
+
+.tpz-pinned-body[data-pinned="bottom"] .tpz-tr:first-child > .tpz-td {
+  border-top: 1px solid var(--tpz-border);
+  box-shadow: 0 -4px 6px -6px rgb(0 0 0 / 25%);
+}
+
+.tpz-pinned-body[data-pinned="bottom"] .tpz-tr:last-child > .tpz-td {
+  border-bottom: 0;
+}
+
+/* An empty field in a "new entry" row or a totals row is blank, not a dash. */
+.tpz-pinned-body .tpz-empty-value {
+  visibility: hidden;
+}
+
 /* ── Child rows ────────────────────────────────────────────────────────── */
 
 /*
@@ -1726,7 +1804,8 @@
   }
 
   .tpz[data-responsive="cards"] .tpz-td[data-pin],
-  .tpz[data-responsive="cards"] .tpz-th[data-pin] {
+  .tpz[data-responsive="cards"] .tpz-th[data-pin],
+  .tpz[data-responsive="cards"] .tpz-pinned-body .tpz-td {
     position: static;
     box-shadow: none;
   }

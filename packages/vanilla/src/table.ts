@@ -27,6 +27,8 @@ import {
   INTERACTIVE_SELECTOR,
   isDetailOpen,
   isInteractiveTarget,
+  pinnedOffset,
+  pinnedRowId,
   setExpanded,
   toggleCollapsed,
   toggleExpanded,
@@ -92,6 +94,8 @@ import {
   type HeaderSearchOptions,
   type PaginationOptions,
   type PartialTableState,
+  type PinnedRows,
+  type PinnedSide,
   type ResolvedColumn,
   type ResolvedSelection,
   type RowHeight,
@@ -241,6 +245,15 @@ export type TableOptions<TRow extends AnyRow = AnyRow> = {
    * edited and exported like any other row, under their parent.
    */
   getParentId?: (row: TRow) => string | null | undefined
+
+  /**
+   * Rows held at the top or bottom of the table, outside `data` — an
+   * editable "new entry" row, a totals row. Drawn through the same columns,
+   * renderers and editors, kept in view while the body scrolls, and never
+   * filtered, sorted, paged, counted, selected or exported. An edit of one
+   * says so with `edit.pinned`.
+   */
+  pinnedRows?: PinnedRows<TRow>
 
   /**
    * Detail rows: content that opens below a row and spans the table's width.
@@ -401,6 +414,8 @@ export function createTable<TRow extends AnyRow>(
   let renderedIds: string[] = []
   /** With child rows, where each of those sits. */
   let renderedInfo: RowInfo[] | undefined
+  /** The pinned rows on screen, top then bottom. */
+  let pinnedRendered: Array<{ id: string; row: TRow; node: HTMLElement; side: PinnedSide; index: number }> = []
   /** Of those, the ones that may be selected — what the header checkbox and a shift-range act on. */
   let renderedSelectable: readonly string[] = []
   /**
@@ -462,6 +477,9 @@ export function createTable<TRow extends AnyRow>(
   const caption = el("caption", { class: "tpz-caption" })
   const head = el("thead", { class: "tpz-thead" })
   const body = el("tbody", { class: "tpz-tbody" })
+  // Bodies of their own for the pinned rows, above and below the data, in the document only while they have rows.
+  const pinnedTopBody = el("tbody", { class: "tpz-tbody tpz-pinned-body", "data-pinned": "top" })
+  const pinnedBottomBody = el("tbody", { class: "tpz-tbody tpz-pinned-body", "data-pinned": "bottom" })
   const footer = el("div", { class: "tpz-footer" })
   const paginationBar = el("div", { class: "tpz-pagination" })
   const headerRow = el("tr", { class: "tpz-tr" })
@@ -969,6 +987,9 @@ export function createTable<TRow extends AnyRow>(
 
     const shape = shapeOf(columns, selection)
     navColumns = [...(selectionMode ? ["__select"] : []), ...(settings.detail ? ["__expand"] : []), ...columns.map((column) => column.key)]
+    const pinnedIds = (side: PinnedSide) =>
+      (settings.pinnedRows?.[side] ?? []).map((row, index) => pinnedRowId(row, index, side, settings.getRowId))
+    const gridIds = [...pinnedIds("top"), ...rowIds, ...pinnedIds("bottom")]
     const build: RowBuild = {
       columns,
       types,
@@ -977,7 +998,7 @@ export function createTable<TRow extends AnyRow>(
       selection,
       pinEdges: pinEdgesOf(columns),
       columnCount,
-      entry: navigable() ? entryCell({ rows: rowIds, columns: navColumns }, state.focus) : undefined,
+      entry: navigable() ? entryCell({ rows: gridIds, columns: navColumns }, state.focus) : undefined,
     }
 
     /*
@@ -1098,11 +1119,15 @@ export function createTable<TRow extends AnyRow>(
     }
 
     // The rows are about to be replaced; if the focus is in one, it goes back to the active cell after.
-    if (body.contains(currentDocument().activeElement)) restoreFocus = true
+    const focusedNow = currentDocument().activeElement
+    if (body.contains(focusedNow) || pinnedTopBody.contains(focusedNow) || pinnedBottomBody.contains(focusedNow)) {
+      restoreFocus = true
+    }
     // An editor open in a row being replaced is opened again in the new one, with what was typed.
     const reopen = editing ? { rowId: editing.rowId, key: editing.key, text: editing.editor.text() } : undefined
     if (editing) closeEditor()
     fill(body, rendered)
+    renderPinned(build)
 
     renderedRows = rows
     renderedIds = rowIds
@@ -1140,20 +1165,29 @@ export function createTable<TRow extends AnyRow>(
   }
 
   /** One row, built the same way whether the body is being filled or extended. */
-  function buildRow(row: TRow, id: string, index: number, build: RowBuild, info?: RowInfo): HTMLElement {
+  function buildRow(
+    row: TRow,
+    id: string,
+    index: number,
+    build: RowBuild,
+    info?: RowInfo,
+    /** A pinned row: held against an edge, and nothing in the table's own columns. */
+    pinned?: { side: PinnedSide; offset: string },
+  ): HTMLElement {
     const { columns, types, format, cls, selection, pinEdges } = build
     const selectionMode = selection?.mode
     const selected = state.selection.includes(id)
     const detail = settings.detail
-    const expandable = detail !== undefined && (detail.canExpand ? detail.canExpand(row) : true)
-    const open = isDetailOpen(state, row, id, detail)
+    const expandable = !pinned && detail !== undefined && (detail.canExpand ? detail.canExpand(row) : true)
+    const open = !pinned && isDetailOpen(state, row, id, detail)
     const togglesDetail = expandable && detail?.toggleOnRowClick === true
+    const clicks = !pinned && (settings.onRowClick !== undefined || togglesDetail)
 
     const treegrid = info !== undefined && navigable()
     const tr = el("tr", {
       class: cls("row", settings.rowClassName?.(row, index, info)),
       "data-selected": selected ? "true" : undefined,
-      "data-clickable": settings.onRowClick || togglesDetail ? "true" : undefined,
+      "data-clickable": clicks ? "true" : undefined,
       "data-expanded": open ? "true" : undefined,
       "data-focused": state.focus?.rowId === id ? "true" : undefined,
       "data-row-id": id,
@@ -1162,13 +1196,15 @@ export function createTable<TRow extends AnyRow>(
       "data-context": info?.context ? "true" : undefined,
       "aria-level": treegrid ? info.depth + 1 : undefined,
       "aria-expanded": treegrid && info.childCount > 0 ? String(!(state.collapsed ?? []).includes(id)) : undefined,
+      "data-pinned": pinned?.side,
     })
+    if (pinned) tr.style.setProperty("--tpz-pinned-offset", pinned.offset)
 
     // Only the active cell is in the tab order; the rest are reached by arrow.
     const entry = build.entry
     const tabindex = (key: string) => (entry === undefined ? undefined : entry.rowId === id && entry.key === key ? 0 : -1)
 
-    if (settings.onRowClick || togglesDetail) {
+    if (clicks) {
       tr.addEventListener("click", (event) => {
         // A link, a button, a checkbox in the row is what was meant, not the row.
         if (isInteractiveTarget(event.target, tr)) return
@@ -1177,7 +1213,9 @@ export function createTable<TRow extends AnyRow>(
       })
     }
 
-    if (selectionMode) {
+    if (selectionMode && pinned) {
+      tr.append(el("td", { class: cls("selectCell"), "data-pin": "start", "data-key": "__select", tabindex: tabindex("__select") }))
+    } else if (selectionMode) {
       const box = el("input", {
         type: selectionMode === "single" ? "radio" : "checkbox",
         class: "tpz-checkbox",
@@ -1388,20 +1426,87 @@ export function createTable<TRow extends AnyRow>(
 
   /** Redraws one cell where it is, if it is on screen. */
   function refillCell(rowId: string, key: string) {
-    const index = renderedIds.indexOf(rowId)
-    const row = renderedRows[index]
+    const found = lookupRow(rowId)
     const column = headerColumns.find((entry) => entry.key === key)
     const cell = cellElement(rowId, key)
-    if (row === undefined || !column || !cell) return
-    fillCell(cell, row, rowId, index, column, headerColumns.indexOf(column), { types: registry(), format: formatting() }, renderedInfo?.[index])
+    if (!found || !column || !cell) return
+    fillCell(cell, found.row, rowId, found.index, column, headerColumns.indexOf(column), { types: registry(), format: formatting() }, found.info)
+  }
+
+  /** A rendered row by id — one of the data's, or a pinned one. */
+  function lookupRow(
+    id: string,
+  ): { row: TRow; index: number; node: HTMLElement; info?: RowInfo; pinned?: PinnedSide } | undefined {
+    const at = renderedIds.indexOf(id)
+    const node = renderedNodes[at]
+    const row = renderedRows[at]
+    if (at !== -1 && node && row !== undefined) return { row, index: at, node, info: renderedInfo?.[at] }
+    const pinned = pinnedRendered.find((entry) => entry.id === id)
+    return pinned ? { row: pinned.row, index: pinned.index, node: pinned.node, pinned: pinned.side } : undefined
+  }
+
+  /** Every row a person can land on, pinned and data, in the order they are on screen. */
+  function gridRowIds(): string[] {
+    return [
+      ...pinnedRendered.filter((entry) => entry.side === "top").map((entry) => entry.id),
+      ...renderedIds,
+      ...pinnedRendered.filter((entry) => entry.side === "bottom").map((entry) => entry.id),
+    ]
+  }
+
+  /**
+   * Builds the pinned bodies, and puts each in the table only while it has
+   * rows. Rebuilt with the data's rows, so a pinned row follows the columns.
+   */
+  function renderPinned(build: RowBuild) {
+    pinnedRendered = []
+    for (const side of ["top", "bottom"] as const) {
+      const target = side === "top" ? pinnedTopBody : pinnedBottomBody
+      const rows = settings.pinnedRows?.[side] ?? []
+      if (rows.length === 0) {
+        target.remove()
+        continue
+      }
+      target.className = build.cls("tbody", "tpz-pinned-body")
+      const nodes = rows.map((row, index) => {
+        const id = pinnedRowId(row, index, side, settings.getRowId)
+        const node = buildRow(row, id, index, build, undefined, { side, offset: pinnedOffset(index, rows.length, side) })
+        pinnedRendered.push({ id, row, node, side, index })
+        return node
+      })
+      fill(target, nodes)
+      if (side === "top" && target.parentNode !== table) head.after(target)
+      if (side === "bottom" && target.parentNode !== table) body.after(target)
+    }
+    measurePinned()
+  }
+
+  /*
+    How far each pinned row sits from its edge, once there is a layout to ask:
+    the rows were built a row height apart, which is right for rows of one line
+    and is what a server writes. A row that wraps is taller, and the rows past
+    it would overlap it. Nothing is written where nothing was measured — on a
+    server, or in a test without layout — so the markup stays what the server sent.
+  */
+  function measurePinned() {
+    for (const side of ["top", "bottom"] as const) {
+      const entries = pinnedRendered.filter((entry) => entry.side === side)
+      if (side === "bottom") entries.reverse()
+      const heights = entries.map((entry) => entry.node.getBoundingClientRect().height)
+      if (heights.every((height) => height === 0)) continue
+      let offset = 0
+      entries.forEach((entry, index) => {
+        entry.node.style.setProperty("--tpz-pinned-offset", `${String(offset)}px`)
+        offset += heights[index] ?? 0
+      })
+    }
   }
 
   /* ── Editing ───────────────────────────────────────────────────────────── */
 
   /** Opens a cell's editor, if the cell can be edited. `seed` replaces the value, as typing does. */
   function startEdit(rowId: string, key: string, seed?: string): boolean {
-    const index = renderedIds.indexOf(rowId)
-    const row = renderedRows[index]
+    const row = lookupRow(rowId)?.row
     const column = headerColumns.find((entry) => entry.key === key)
     const cell = cellElement(rowId, key)
     if (row === undefined || !column || !cell || !isCellEditable(column, row)) return false
@@ -1486,11 +1591,11 @@ export function createTable<TRow extends AnyRow>(
   /** The next editable cell after this one, or before it, in reading order across the page. */
   function nextEditable(rowId: string, key: string, backwards: boolean): { rowId: string; key: string } | undefined {
     const cells: Array<{ rowId: string; key: string; row: TRow; column: ResolvedColumn<TRow, Node | string> }> = []
-    renderedIds.forEach((id, index) => {
-      const row = renderedRows[index]
-      if (row === undefined) return
+    for (const id of gridRowIds()) {
+      const row = lookupRow(id)?.row
+      if (row === undefined) continue
       for (const column of headerColumns) cells.push({ rowId: id, key: column.key, row, column })
-    })
+    }
     if (backwards) cells.reverse()
 
     const from = cells.findIndex((cell) => cell.rowId === rowId && cell.key === key)
@@ -1503,8 +1608,8 @@ export function createTable<TRow extends AnyRow>(
   function finishEdit(input: { text: string } | { value: unknown }, reason: CommitReason) {
     const open = editing
     if (!open) return
-    const index = renderedIds.indexOf(open.rowId)
-    const row = renderedRows[index]
+    const found = lookupRow(open.rowId)
+    const row = found?.row
     const column = headerColumns.find((entry) => entry.key === open.key)
     if (row === undefined || !column) {
       closeEditor()
@@ -1529,7 +1634,8 @@ export function createTable<TRow extends AnyRow>(
     closeEditor()
 
     if (changed) {
-      const result = settings.onCellEdit?.({ rowId, row, key, value, previousValue: previous })
+      const pinned = found?.pinned
+      const result = settings.onCellEdit?.({ rowId, row, key, value, previousValue: previous, ...(pinned ? { pinned } : {}) })
       if (isPromiseLike(result)) {
         refillCell(rowId, key)
         result.then(
@@ -1566,7 +1672,7 @@ export function createTable<TRow extends AnyRow>(
     const target = event.target
     if (!(target instanceof Element)) return
     const cell = target.closest<HTMLElement>('td[data-editable="true"]')
-    if (!cell || !body.contains(cell) || cell.dataset["editing"] === "true") return
+    if (!cell || !table.contains(cell) || head.contains(cell) || cell.dataset["editing"] === "true") return
     if (isInteractiveTarget(target, cell)) return
     const rowId = cell.parentElement?.dataset["rowId"]
     const key = cell.dataset["key"]
@@ -1596,8 +1702,7 @@ export function createTable<TRow extends AnyRow>(
 
   /** The rendered `<td>` for a cell, or the `<tr>` when no column is named. */
   function cellElement(rowId: string, key: string | undefined): HTMLElement | undefined {
-    const index = renderedIds.indexOf(rowId)
-    const row = renderedNodes[index]
+    const row = lookupRow(rowId)?.node
     if (!row) return undefined
     if (key === undefined) return row
     // By attribute rather than by building a selector from the key, which may hold a dot or a quote;
@@ -1615,8 +1720,8 @@ export function createTable<TRow extends AnyRow>(
   function syncFocus() {
     const focusRow = state.focus?.rowId
     if (focusRow !== renderedFocusRow) {
-      for (const [index, id] of renderedIds.entries()) {
-        const tr = renderedNodes[index]
+      for (const id of gridRowIds()) {
+        const tr = lookupRow(id)?.node
         if (!tr) continue
         if (id === focusRow) tr.dataset["focused"] = "true"
         else if (id === renderedFocusRow) delete tr.dataset["focused"]
@@ -1629,10 +1734,10 @@ export function createTable<TRow extends AnyRow>(
       return
     }
 
-    const entry = entryCell({ rows: renderedIds, columns: navColumns }, state.focus)
+    const entry = entryCell({ rows: gridRowIds(), columns: navColumns }, state.focus)
     const cell = entry ? cellElement(entry.rowId, entry.key) : undefined
     if (cell !== renderedEntry || cell?.getAttribute("tabindex") !== "0") {
-      for (const stop of body.querySelectorAll<HTMLElement>('td[tabindex="0"]')) {
+      for (const stop of table.querySelectorAll<HTMLElement>('tbody td[tabindex="0"]')) {
         if (stop !== cell) stop.setAttribute("tabindex", "-1")
       }
       cell?.setAttribute("tabindex", "0")
@@ -1693,7 +1798,7 @@ export function createTable<TRow extends AnyRow>(
     if (!(target instanceof HTMLElement)) return
 
     const cell = target.closest<HTMLElement>("td[tabindex]")
-    if (!cell || !body.contains(cell)) return
+    if (!cell || !table.contains(cell) || head.contains(cell)) return
 
     // From a control inside a cell, Escape goes back to the cell.
     if (cell !== target) {
@@ -1725,7 +1830,7 @@ export function createTable<TRow extends AnyRow>(
     }
 
     if (isNavigationKey(event.key) && !event.altKey && !event.shiftKey) {
-      const next = nextCell({ rows: renderedIds, columns: navColumns }, { rowId, key }, event.key, {
+      const next = nextCell({ rows: gridRowIds(), columns: navColumns }, { rowId, key }, event.key, {
         ctrlKey: event.ctrlKey || event.metaKey,
         pageRows: pageRowsFrom(cell),
         rtl: getComputedStyle(cell).direction === "rtl",

@@ -74,6 +74,7 @@ export type {
   HeaderSearchOptions,
   PaginationOptions,
   PartialTableState,
+  PinnedRows,
   RowInfo,
   SelectionInput,
   SelectionOptions,

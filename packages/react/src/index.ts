@@ -110,6 +110,7 @@ export type {
   PaginationOptions,
   PartialTableState,
   Pin,
+  PinnedRows,
   RowHeight,
   RowInfo,
   SelectionInput,

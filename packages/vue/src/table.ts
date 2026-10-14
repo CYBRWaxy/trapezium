@@ -29,6 +29,7 @@ import type {
   FormatContext,
   PaginationOptions,
   PartialTableState,
+  PinnedRows,
   RowHeight,
   RowInfo,
   SelectionInput,
@@ -178,6 +179,12 @@ export const Table = defineComponent({
      * and paging.
      */
     getParentId: { type: Function as PropType<(row: AnyRow) => string | null | undefined>, default: undefined },
+    /**
+     * Rows held at the top or bottom, outside `data` — a "new entry" row, a
+     * totals row. Same columns, renderers and editors; never filtered, sorted,
+     * paged, counted, selected or exported.
+     */
+    pinnedRows: { type: Object as PropType<PinnedRows<AnyRow>>, default: undefined },
     emptyMessage: { type: String, default: undefined },
 
     /**
@@ -377,6 +384,7 @@ export const Table = defineComponent({
       id: props.id,
       rowClassName: props.rowClassName,
       getParentId: props.getParentId,
+      pinnedRows: props.pinnedRows,
       emptyMessage: props.emptyMessage,
       buildHref: props.buildHref,
       className: props.className,
