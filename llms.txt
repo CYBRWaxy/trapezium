@@ -48,6 +48,7 @@ columnControl · pagination · selection · onSelectionChange(ids, rows) · expo
 densityControl · responsive("scroll"|"cards") · stickyHeader · maxHeight ·
 rowHeight("fixed"|"auto"|number) · types · format ·
 rowHref(row) · onRowClick(row, event) · rowClassName(row, index, info) · detail · getParentId(row) ·
+pinnedRows({ top, bottom }) ·
 cellNavigation ·
 onCellEdit(edit) · editTrigger("click"|"doubleClick") · emptyState · emptyMessage ·
 toolbar · appendRow · footer · buildHref(state) · linkComponent (React) · onNavigate(href, event) ·
@@ -266,6 +267,18 @@ childCount, context }; attributes data-depth="1", data-parent, data-context; .tp
 aria-level/aria-expanded on rows. URL: include "collapsed" → fold=. In code: toggleCollapsed,
 setCollapsed, isCollapsed, parentIdsWithChildren(rows, getParentId) (for collapse all). Not
 grouping, not aggregation, not multi-level trees.
+
+## Pinned rows
+
+    pinnedRows={{ top: [newEntryRow], bottom: [totalsRow] }}
+
+Rows outside data, in their own <tbody data-pinned="top|bottom">, drawn through the same columns,
+renderers, formatting and editors, and sticky while the body scrolls (top ones under the sticky
+header). Never filtered, searched, sorted, paged, counted, selected (no checkbox) or exported.
+Editable: onCellEdit gets pinned: "top"|"bottom" (a "new entry" row = handle the edit by adding a
+row). Keyboard: part of the grid (ArrowUp from the first body row reaches the pinned top row).
+Ids: row.id / getRowId, else "top-0", "bottom-0". Empty cells are blank. Offsets: a row height each
+on the server, measured in the browser. Style: --tpz-pinned-bg.
 
 onRowClick (and toggleOnRowClick) ignore clicks on controls inside the row: a[href], button,
 input, select, textarea, label, [role=menu*], [role=button] and the like, or anything with

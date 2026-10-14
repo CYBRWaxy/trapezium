@@ -146,6 +146,32 @@ In code: `toggleCollapsed(state, parentId)` · `setCollapsed(state, parentIds, c
 
 Child rows are rows the data already relates — not rows the table invents by grouping on a column, with no totals and no levels below the first. Grouping and aggregation are a different feature, and multi-level trees are out of scope.
 
+## Pinned rows
+
+Rows held at the top or bottom of the table, outside the data: an editable "new entry" row above everything, a totals row below it.
+
+```tsx
+const totals = { id: "totals", reference: "Total", amount: rows.reduce((sum, row) => sum + row.amount, 0) }
+
+<Table
+  data={rows}
+  maxHeight={480}
+  pinnedRows={{ top: [{ id: "new", reference: "", amount: null }], bottom: [totals] }}
+  columns={[{ key: "reference", editable: true }, { key: "amount", type: "currency", editable: true }]}
+  onCellEdit={(edit) => (edit.pinned === "top" ? addRow({ [edit.key]: edit.value }) : updateRow(edit))}
+/>
+```
+
+They are drawn through the same columns, renderers, formatting and editors as the data, in bodies of their own (`<tbody data-pinned="top">` and `"bottom"`), and stay in view while the body scrolls — under the sticky header at the top, at the bottom of the scroll area at the bottom. They are never filtered, searched, sorted, paged, counted, selected or exported: they are not data.
+
+- **Editing.** A pinned row's cells edit like any other, and the edit says `pinned: "top"` or `"bottom"`. A "new entry" row is a pinned row whose edits your handler turns into a new row of data.
+- **The keyboard.** With cell navigation the pinned rows are rows of the grid: the up arrow from the first row of the body lands on the last pinned row above it, and Control+End reaches the totals.
+- **Ids.** Give pinned rows ids of their own (`id`, or what `getRowId` returns) when they are edited. A pinned row with none is `"top-0"`, `"bottom-0"` and so on, so it never collides with the data.
+- **Empty cells** in a pinned row are blank rather than showing the empty dash.
+- **Height.** Each row stacks at its distance from the edge: a row height apiece in the server's markup, and the measured height once the table is in a browser, so a pinned row that wraps does not overlap the next.
+
+Styling: `--tpz-pinned-bg` is their background; `tbody[data-pinned] .tpz-tr` selects them.
+
 ## Row clicks
 
 `onRowClick(row, event)` fires on a click anywhere in a row that was not on a control inside it. A link, a button, an input, a select, a label, a `[role="menu…"]` element or anything marked `data-tpz-interactive` is left to itself, so a button rendered in a cell never also opens the row. `isInteractiveTarget(event.target, row)` and `INTERACTIVE_SELECTOR` are exported for anyone building the same rule into their own gestures.
