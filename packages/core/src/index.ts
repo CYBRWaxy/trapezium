@@ -39,6 +39,7 @@ export type {
   PartialTableState,
   PinnedRows,
   Pin,
+  ResponsivePin,
   ResolvedColumn,
   ResolvedHeaderSearch,
   ResolvedSelection,
@@ -186,6 +187,8 @@ export { expandableIds, isDetailOpen } from "./detail.js"
 export { getRowsWithChildren, parentIdsWithChildren } from "./children.js"
 export { pinnedOffset, pinnedRowId } from "./pinned.js"
 export { cellDisplayText } from "./display.js"
+export { columnSizing, pinWhenToken, responsivePinStyles } from "./sizing.js"
+export type { CellSizing } from "./sizing.js"
 export { applyRowMove, canReorderRows, moveRowTo, stepRow } from "./reorder.js"
 export type { RowMove, RowReorderOptions } from "./reorder.js"
 export { createEdgeScroller, startRowDrag } from "./drag.js"

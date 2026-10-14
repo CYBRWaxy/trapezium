@@ -191,7 +191,9 @@ function resolveColumn<TRow extends AnyRow, TNode>(
     resizable: merged.resizable ?? options.resizable ?? true,
     reorderable: merged.reorderable ?? options.reorderable ?? true,
     width: state.widths[key] ?? merged.width,
-    pin: state.pinned[key] ?? merged.pin,
+    // A pin the user chose wins over the definition's, and over a pin by width.
+    pin: state.pinned[key] ?? (typeof merged.pin === "string" ? merged.pin : undefined),
+    pinWhen: state.pinned[key] === undefined && typeof merged.pin === "object" ? merged.pin : undefined,
     index: 0,
   }
 }
@@ -286,6 +288,7 @@ function applyPins<TRow, TNode>(
   columns: ResolvedColumn<TRow, TNode>[],
   pinned: Record<string, Pin>,
 ): ResolvedColumn<TRow, TNode>[] {
+  // Only a pin that always holds moves a column; one by width keeps its place.
   const pin = (column: ResolvedColumn<TRow, TNode>) => pinned[column.key] ?? column.pin
 
   const start = columns.filter((column) => pin(column) === "start")

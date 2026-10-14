@@ -2,6 +2,8 @@ import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useR
 import {
   INTERACTIVE_SELECTOR,
   cellDisplayText,
+  columnSizing,
+  responsivePinStyles,
   warmSearchWhenIdle,
   clearSelection,
   rangeSelection,
@@ -288,27 +290,50 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
   // letting go outside will remove it.
   const [draggingColumn, setDraggingColumn] = useState(false)
 
-  useLayoutEffect(() => {
+  /*
+    A column frozen by width is counted only while its container query has
+    frozen it — the browser says so: its position is `sticky` — and is given
+    an offset either way, which it reads only when frozen.
+  */
+  const measurePins = useCallback(() => {
     const head = headRef.current
     if (!head) return
 
-    const cells = [...head.querySelectorAll<HTMLElement>("[data-pin]")]
+    const cells = [...head.querySelectorAll<HTMLElement>("[data-pin], [data-pin-when]")]
+    const sideOf = (cell: HTMLElement) => cell.dataset["pin"] ?? (cell.dataset["pinWhen"]?.startsWith("end") ? "end" : "start")
+    const frozen = (cell: HTMLElement) => cell.dataset["pin"] !== undefined || getComputedStyle(cell).position === "sticky"
     const next: Record<string, number> = {}
 
     let start = 0
-    for (const cell of cells.filter((entry) => entry.dataset["pin"] === "start")) {
+    for (const cell of cells.filter((entry) => sideOf(entry) === "start")) {
       next[cell.dataset["key"] ?? ""] = start
-      start += cell.getBoundingClientRect().width
+      if (frozen(cell)) start += cell.getBoundingClientRect().width
     }
 
     let end = 0
-    for (const cell of cells.filter((entry) => entry.dataset["pin"] === "end").reverse()) {
+    for (const cell of cells.filter((entry) => sideOf(entry) === "end").reverse()) {
       next[cell.dataset["key"] ?? ""] = end
-      end += cell.getBoundingClientRect().width
+      if (frozen(cell)) end += cell.getBoundingClientRect().width
     }
 
     setPinOffsets((current) => (shallowEqualNumbers(current, next) ? current : next))
-  }, [columns, state.widths, state.density, rows.length])
+  }, [])
+
+  useLayoutEffect(measurePins, [measurePins, columns, state.widths, state.density, rows.length])
+
+  /* How wide each column is, and the stylesheet that freezes columns pinned by width. */
+  const sizing = useMemo(() => columnSizing(columns), [columns])
+  const pinStyles = useMemo(() => responsivePinStyles(columns), [columns])
+
+  // A width of the table that freezes or frees a column moves the offsets, so they follow it.
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const root = rootRef.current
+    if (pinStyles === "" || !root || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(() => measurePins())
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [pinStyles, measurePins])
 
   /*
     Both custom properties on one object so the memo has one identity to
@@ -1029,6 +1054,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
             pinned={side}
             pinnedOffset={pinnedPx[`${side}:${id}`] ?? pinnedOffset(index, entries.length, side)}
             handle={reorder ? handleOf(false, true) : undefined}
+            sizing={sizing}
           />
         ))}
       </tbody>
@@ -1210,6 +1236,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
   return (
     <TableContext.Provider value={{ theme, density: state.density }}>
     <div
+      ref={rootRef}
       className={classes("root", className)}
       data-theme={theme}
       data-density={state.density}
@@ -1220,6 +1247,12 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
       data-row-height={rowHeightMode}
       style={rootStyle}
     >
+      {/*
+        The container queries that freeze columns pinned by width. Written
+        into the table rather than the stylesheet, because the widths are the
+        caller's; the same text on a server and in a browser.
+      */}
+      {pinStyles !== "" && <style>{pinStyles}</style>}
       <div className={classes("frame")}>
         <Toolbar
           state={state}
@@ -1344,7 +1377,8 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                     sortLevels={sortLevels}
                     navigate={navigate}
                     className={classes("headerCell", column.headerClassName)}
-                    style={{ width: column.width, minWidth: column.minWidth, maxWidth: column.maxWidth }}
+                    style={headerStyle(column, pinOffsets, sizing[column.key])}
+                    size={sizing[column.key]?.size}
                   />
                 ))}
               </tr>
@@ -1427,6 +1461,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                     tree={treeOf(rowInfo?.[rowIndex], folded.has(id))}
                     onToggleChildren={rowInfo ? toggleChildren : undefined}
                     treegrid={treegrid}
+                    sizing={sizing}
                     handle={reorder ? handleOf(reorder.canDrag ? reorder.canDrag(row) : true, !reorderable) : undefined}
                     onHandleDown={reorder ? onHandleDown : undefined}
                     onHandleStep={reorder ? onHandleStep : undefined}
@@ -1651,6 +1686,19 @@ function pageRowsFrom(cell: HTMLElement): number {
   const scrolls = scroll !== null && scroll.scrollHeight > scroll.clientHeight + 1
   const height = scrolls ? scroll.clientHeight : cell.ownerDocument.defaultView?.innerHeight ?? 0
   return Math.max(1, Math.floor(height / rowHeight) - 1)
+}
+
+/** A header cell's inline style: its width, and the offset a column frozen by width reads. */
+function headerStyle(
+  column: { key: string; pinWhen?: unknown },
+  pinOffsets: Record<string, number>,
+  size: { style: Record<string, string> } | undefined,
+): React.CSSProperties {
+  const offset = pinOffsets[column.key]
+  const style: Record<string, string> = { ...size?.style }
+  if (column.pinWhen !== undefined && offset !== undefined) style["--tpz-pin-offset"] = `${String(offset)}px`
+  // Custom properties are not in React's style type, which is why `rootStyle` is cast the same way.
+  return style as React.CSSProperties
 }
 
 function normaliseSearch(option: TableProps<AnyRow>["search"]): SearchOptions | undefined {

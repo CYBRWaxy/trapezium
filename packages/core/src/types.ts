@@ -25,6 +25,20 @@ export type Align = "start" | "center" | "end"
 /** Which edge a column is frozen to, if any. */
 export type Pin = "start" | "end"
 
+/**
+ * A column frozen only while the table is narrower — or wider — than a width:
+ * the identifying column pinned on a phone, say, without moving anything on a
+ * desktop. Decided by a container query on the table, so a server and a
+ * browser draw the same thing, and nothing is measured to decide it.
+ */
+export type ResponsivePin = {
+  side: Pin
+  /** Frozen while the table is narrower than this many pixels. */
+  below?: number
+  /** Frozen while the table is at least this many pixels wide. */
+  above?: number
+}
+
 export type SortDirection = "asc" | "desc"
 
 /** One level of sorting. Several may apply, in order. */
@@ -412,13 +426,34 @@ export type ColumnDef<TRow = AnyRow, TNode = unknown> = {
   /** Defaults to the type's alignment — numbers end, booleans centre, everything else start. */
   align?: Align
 
-  /** Starting width in pixels. Columns are content-sized when omitted. */
+  /**
+   * The column's width in pixels, held exactly: content that does not fit ends
+   * in an ellipsis rather than widening the column, and spare width goes to
+   * other columns. A width the user drags to replaces it. Columns are sized to
+   * their content when omitted.
+   */
   width?: number
+  /** The narrowest a content-sized column may be, in pixels. Defaults to `--tpz-col-min-width` (8rem). */
   minWidth?: number
+  /** The widest a content-sized column may grow, in pixels; longer content ends in an ellipsis. */
   maxWidth?: number
+  /**
+   * Take a share of the width the table has to spare — the room left when the
+   * columns are narrower than the table. With any column growing, the others
+   * keep to their content (or their `width`) and the spare room is split
+   * between the growing columns in proportion to their numbers: `grow: 2`
+   * takes twice what `grow: 1` does. Without it, spare room is shared by every
+   * column sized to its content.
+   */
+  grow?: number
 
-  /** Freeze this column against an edge while the rest scrolls. */
-  pin?: Pin
+  /**
+   * Freeze this column against an edge while the rest scrolls — always, with
+   * `"start"` or `"end"`, or only below or above a width of the table, with
+   * `{ side, below }` or `{ side, above }`. A column frozen always is moved to
+   * that edge; one frozen by width stays where it is in the order.
+   */
+  pin?: Pin | ResponsivePin
 
   /** Start hidden. The user can still reveal it from the column menu. */
   hidden?: boolean
@@ -505,7 +540,7 @@ export type ColumnDef<TRow = AnyRow, TNode = unknown> = {
  */
 export type ResolvedColumn<TRow = AnyRow, TNode = unknown> = Omit<
   ColumnDef<TRow, TNode>,
-  "type" | "accessor" | "header" | "headerSearch"
+  "type" | "accessor" | "header" | "headerSearch" | "pin"
 > & {
   key: string
   header: string
@@ -533,7 +568,10 @@ export type ResolvedColumn<TRow = AnyRow, TNode = unknown> = Omit<
   index: number
   /** Resolved width in pixels, from state or the definition. Absent means content-sized. */
   width?: number
+  /** Frozen always, from the state or the definition. */
   pin?: Pin
+  /** Frozen only below or above a width of the table; absent when `pin` is set or the column is not pinned so. */
+  pinWhen?: ResponsivePin
 }
 
 /**

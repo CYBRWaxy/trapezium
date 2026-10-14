@@ -13,6 +13,7 @@ import {
   setOrder,
   setPin,
   setWidth,
+  pinWhenToken,
   sortPriority,
   toggleSort,
   removeFilter,
@@ -65,6 +66,7 @@ export function HeaderCell<TRow extends AnyRow>({
   navigate,
   className = "tpz-th",
   descriptionId,
+  size,
 }: {
   column: TableColumn<TRow>
   state: TableState
@@ -118,6 +120,8 @@ export function HeaderCell<TRow extends AnyRow>({
    * hydration.
    */
   descriptionId?: string
+  /** How the column is sized — `columnSizing(columns)[key].size` — for the stylesheet. */
+  size?: "fixed" | "fit" | "grow"
 }) {
   const [dropEdge, setDropEdge] = useState<"before" | "after" | undefined>()
 
@@ -256,6 +260,8 @@ export function HeaderCell<TRow extends AnyRow>({
       data-key={column.key}
       data-pin={column.pin}
       data-pin-edge={isPinEdge ? column.pin : undefined}
+      data-pin-when={column.pinWhen ? pinWhenToken(column.pinWhen) : undefined}
+      data-size={size}
       data-filtered={filter ? "true" : undefined}
       data-draggable={reorderable ? "true" : undefined}
       data-dragging={dragging ? "true" : undefined}

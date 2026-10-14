@@ -1,5 +1,13 @@
 import { memo, type ReactNode } from "react"
-import { isCellEditable, isInteractiveTarget, type AnyRow, type FormatContext, type TypeRegistry } from "@trapezium/core"
+import {
+  isCellEditable,
+  isInteractiveTarget,
+  pinWhenToken,
+  type AnyRow,
+  type CellSizing,
+  type FormatContext,
+  type TypeRegistry,
+} from "@trapezium/core"
 
 import { cellText, renderCell } from "./cell.js"
 import type { ClassResolver } from "./classes.js"
@@ -108,6 +116,8 @@ export type RowProps<TRow extends AnyRow> = {
   onHandleStep?: (id: string, delta: -1 | 1) => void
   /** A context menu asked for on the row. Identity-stable, like `onRowClick`. */
   onContextMenu?: (row: TRow, id: string, event: React.MouseEvent<HTMLTableRowElement>) => void
+  /** How wide each column's cells are — `columnSizing(columns)`, one object for the whole table. */
+  sizing?: Record<string, CellSizing>
 }
 
 function RowInner<TRow extends AnyRow>({
@@ -147,6 +157,7 @@ function RowInner<TRow extends AnyRow>({
   onHandleDown,
   onHandleStep,
   onContextMenu,
+  sizing,
 }: RowProps<TRow>) {
   // Only the active cell is in the tab order; the rest are reached by arrow.
   const tabIndex = (key: string) => (activeKey === undefined ? undefined : activeKey === key ? 0 : -1)
@@ -278,6 +289,7 @@ function RowInner<TRow extends AnyRow>({
         const content = renderCell(context, types)
         const leading = columnIndex === 0
         const lines = typeof column.wrap === "number" ? column.wrap : undefined
+        const size = sizing?.[column.key]
 
         const linked =
           leading && href ? (
@@ -335,6 +347,8 @@ function RowInner<TRow extends AnyRow>({
             data-wrap={wrapAttribute(column.wrap)}
             data-pin={column.pin}
             data-pin-edge={pinEdges[column.key] ? column.pin : undefined}
+            data-pin-when={column.pinWhen ? pinWhenToken(column.pinWhen) : undefined}
+            data-size={size?.size}
             data-key={column.key}
             // Carries the header into the cell so the card layout
             // can label it in CSS, with no second render.
@@ -347,11 +361,7 @@ function RowInner<TRow extends AnyRow>({
             aria-busy={pending || undefined}
             aria-readonly={editable === true && !cellEditable ? true : undefined}
             title={failed}
-            style={{
-              ...(column.pin === "start" ? { left: pinOffsets[column.key] } : {}),
-              ...(column.pin === "end" ? { right: pinOffsets[column.key] } : {}),
-              width: column.width,
-            }}
+            style={cellStyle(column, pinOffsets, size)}
           >
             {/*
               A table cell has to go on being a table cell, so anything that
@@ -361,14 +371,18 @@ function RowInner<TRow extends AnyRow>({
             */}
             {editing ? (
               renderEditor(column)
-            ) : lines !== undefined ? (
-              <span className="tpz-clamp" style={{ "--tpz-cell-lines": lines } as React.CSSProperties}>
-                {inner}
-              </span>
-            ) : fit ? (
-              <span className="tpz-fit">{inner}</span>
             ) : (
-              inner
+              <Boxed box={size?.box === true}>
+                {lines !== undefined ? (
+                  <span className="tpz-clamp" style={{ "--tpz-cell-lines": lines } as React.CSSProperties}>
+                    {inner}
+                  </span>
+                ) : fit ? (
+                  <span className="tpz-fit">{inner}</span>
+                ) : (
+                  inner
+                )}
+              </Boxed>
             )}
             {failed !== undefined && !editing && <span className="tpz-sr">{`, not saved: ${failed}`}</span>}
           </td>
@@ -376,6 +390,34 @@ function RowInner<TRow extends AnyRow>({
       })}
     </tr>
   )
+}
+
+/**
+ * A cell's content, in the box that holds a column to its width or caps it
+ * when the column has one — see `columnSizing`.
+ */
+function Boxed({ box, children }: { box: boolean; children: ReactNode }) {
+  return box ? <span className="tpz-box">{children}</span> : <>{children}</>
+}
+
+/**
+ * A cell's inline style: its column's width, and where a frozen column sits.
+ * A column frozen by width gets its offset as a custom property, which only
+ * the container query that freezes it reads — on a cell that is not frozen,
+ * `left` would move it.
+ */
+export function cellStyle(
+  column: { key: string; pin?: "start" | "end"; pinWhen?: { side: "start" | "end" } },
+  pinOffsets: Record<string, number>,
+  size: CellSizing | undefined,
+): React.CSSProperties {
+  const offset = pinOffsets[column.key]
+  return {
+    ...size?.style,
+    ...(column.pin === "start" ? { left: offset } : {}),
+    ...(column.pin === "end" ? { right: offset } : {}),
+    ...(column.pinWhen && offset !== undefined ? { "--tpz-pin-offset": `${String(offset)}px` } : {}),
+  }
 }
 
 /**

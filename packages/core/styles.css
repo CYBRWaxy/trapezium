@@ -738,11 +738,18 @@
   transition: background var(--tpz-transition);
 }
 
-.tpz-tbody .tpz-tr:hover .tpz-td {
+/*
+  A frozen cell — pinned always, or pinned by width — is left out: its
+  background must stay opaque, and its tint is painted over it instead (see
+  "Pinned columns"). A translucent background here would replace the opaque
+  one and let the rows scrolling under it show through. So would the rows of
+  a pinned body, which tint themselves the same way.
+*/
+.tpz-tbody:not([data-pinned]) .tpz-tr:hover .tpz-td:not([data-pin], [data-pin-when]) {
   background: var(--tpz-hover);
 }
 
-.tpz-tbody .tpz-tr[data-selected="true"] .tpz-td {
+.tpz-tbody:not([data-pinned]) .tpz-tr[data-selected="true"] .tpz-td:not([data-pin], [data-pin-when]) {
   background: var(--tpz-selected);
 }
 
@@ -755,7 +762,7 @@
   so a row a banner has just jumped to is found at a glance. Painted over the
   frozen cells the same way as the other tints, further down.
 */
-.tpz-tbody .tpz-tr[data-focused="true"] .tpz-td {
+.tpz-tbody:not([data-pinned]) .tpz-tr[data-focused="true"] .tpz-td:not([data-pin], [data-pin-when]) {
   background: var(--tpz-focused);
 }
 
@@ -784,7 +791,83 @@
   outline-offset: -2px;
 }
 
+/* ── Column widths ─────────────────────────────────────────────────────── */
+
+/*
+  A table shares spare width by content, so a cell's content is what makes a
+  column wider than it was told to be. A column holding a width (`data-size=
+  "fixed"`, with the width as the cell's width, minimum and maximum) lays its
+  content out in a box of no width of its own that fills the cell: the box
+  cannot push the column wider, and what does not fit ends in an ellipsis. A
+  column with a `maxWidth` uses the same box, capped at `--tpz-col-cap`, so it
+  grows with its content up to there and no further.
+*/
+.tpz-box {
+  display: block;
+  min-width: 0;
+  max-width: var(--tpz-col-cap, none);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tpz-td[data-size="fixed"] > .tpz-box {
+  width: 0;
+  min-width: 100%;
+}
+
+.tpz-th[data-size="fixed"] .tpz-th-inner {
+  width: 0;
+  min-width: 100%;
+}
+
+.tpz-th .tpz-th-inner {
+  max-width: var(--tpz-col-cap, none);
+}
+
+/* While some columns grow, the rest keep to their content: a width of nothing, which a cell widens to fit. */
+.tpz-th[data-size="fit"],
+.tpz-td[data-size="fit"] {
+  width: 1px;
+}
+
 /* ── Pinned columns ────────────────────────────────────────────────────── */
+
+/*
+  A column pinned by width is a frozen column in waiting: opaque, with its
+  tints painted over it, at every width — so the moment a container query
+  freezes it, it already looks right. Until then it sits in the flow.
+*/
+.tpz-th[data-pin-when],
+.tpz-td[data-pin-when] {
+  position: relative;
+  background: var(--tpz-surface);
+}
+
+.tpz-th[data-pin-when] {
+  background: var(--tpz-muted);
+}
+
+.tpz-th[data-pin-when]::after,
+.tpz-td[data-pin-when]::after {
+  position: absolute;
+  z-index: -1;
+  background: transparent;
+  content: "";
+  inset: 0;
+  pointer-events: none;
+}
+
+.tpz-tbody .tpz-tr:hover .tpz-td[data-pin-when]::after {
+  background: var(--tpz-hover);
+}
+
+.tpz-tbody .tpz-tr[data-selected="true"] .tpz-td[data-pin-when]::after {
+  background: var(--tpz-selected);
+}
+
+.tpz-tbody .tpz-tr[data-focused="true"] .tpz-td[data-pin-when]::after {
+  background: var(--tpz-focused);
+}
 
 .tpz-th[data-pin],
 .tpz-td[data-pin] {
@@ -1279,7 +1362,7 @@
   border-bottom-color: transparent;
 }
 
-.tpz-tbody .tpz-detail-row:hover > .tpz-td {
+.tpz-tbody .tpz-tr.tpz-detail-row:hover > .tpz-td.tpz-detail-cell {
   background: var(--tpz-detail-bg);
 }
 
