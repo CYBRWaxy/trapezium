@@ -1,6 +1,6 @@
 {
   "name": "@trapezium/react",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A data table for React that looks right out of the box: zero-config columns, filtering, search, pagination, selection, custom renderers and SSR.",
   "license": "MIT",
   "repository": {
