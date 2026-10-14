@@ -134,9 +134,9 @@ Nothing exotic — mostly not doing avoidable work:
 
 | | minified | gzipped |
 |---|---|---|
-| `@trapezium/core` | 41 kB | 14 kB |
-| `@trapezium/react` (excluding the core) | 41 kB | 14 kB |
-| `@trapezium/vanilla` (core included) | 81 kB | 28 kB |
-| the stylesheet | 24 kB | 5 kB |
+| `@trapezium/core` | 61 kB | 21 kB |
+| `@trapezium/react` (excluding the core) | 70 kB | 23 kB |
+| `@trapezium/vanilla` (core included) | 128 kB | 43 kB |
+| the stylesheet | 34 kB | 7 kB |
 
 Each entry point bundled into one file and minified with esbuild, then gzipped. No runtime dependencies, so that is the whole of it.

@@ -58,7 +58,20 @@ The biggest difference: TanStack's state is several objects, Trapezium's is one.
 | `autoHeight: true` on a column | `wrap: true`, or `rowHeight="auto"` for the whole table |
 | `wrapText` | `wrap` |
 | `domLayout` | `density`, `maxHeight` |
-| Enterprise: pivoting, grouping, aggregation | not offered, on purpose |
+| `flex` | `grow` |
+| `width` on a column | `width`, held exactly |
+| `headerTooltip` | `description` |
+| `headerComponent` | `renderHeader` |
+| `masterDetail`, `detailCellRenderer`, `isRowMaster` | `detail={{ render, canExpand }}` |
+| `editable`, `cellEditor`, `valueParser` | `editable`, `renderEditor`, `parse` (and `validate`) |
+| `onCellValueChanged` | `onCellEdit` — the table never changes `data`; a returned promise shows the cell saving |
+| `singleClickEdit` | `editTrigger="click"` |
+| `api.ensureIndexVisible`, `api.setFocusedCell`, `api.flashCells` | `focusCell(state, rowId, key)` — state, so it is declarative |
+| `treeData` one level deep, `getDataPath` | `getParentId(row)` |
+| `pinnedTopRowData`, `pinnedBottomRowData` | `pinnedRows={{ top, bottom }}` |
+| `rowDragManaged`, `onRowDragEnd` | `rowReorder={{ onReorder, canDrag }}` |
+| `getContextMenuItems` | `onRowContextMenu` and your own menu, with `info.text` for "Copy cell" |
+| Enterprise: pivoting, grouping, aggregation, multi-level tree data | not offered, on purpose |
 
 The API-object habit is the thing to unlearn: there is no imperative grid handle to grab. Everything is state, and you already know how to change state.
 
@@ -83,4 +96,4 @@ You also stop shipping MUI, Emotion and their peer dependencies to get a table.
 
 ## What no longer exists
 
-Grouping, aggregation, pivoting, tree data, spreadsheet-style formulas and Excel export are not in Trapezium and are not planned. If you rely on those, AG Grid Enterprise is genuinely the right tool and this is the wrong migration.
+Grouping, aggregation, pivoting, tree data deeper than one level, spreadsheet-style formulas and Excel export are not in Trapezium and are not planned. If you rely on those, AG Grid Enterprise is genuinely the right tool and this is the wrong migration.

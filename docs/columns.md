@@ -171,12 +171,19 @@ The reset lives in the toolbar, so a table with every toolbar control switched o
 ## Width, alignment and wrapping
 
 ```tsx
-{ key: "notes", width: 320, wrap: true }
-{ key: "count", align: "end" }
+{ key: "flag", header: "", width: 56 }  // exactly 56px, header and cells alike
+{ key: "notes", grow: 1 }               // takes the room the table has to spare
 { key: "name", minWidth: 200, maxWidth: 400 }
+{ key: "count", align: "end" }
 ```
 
-Widths are in pixels. Columns are content-sized when you do not set one, within the `--tpz-col-min-width` and `--tpz-col-max-width` tokens. A width a user drags is stored in state and wins over the definition; double-clicking the resize handle forgets it.
+Widths are in pixels. Columns are content-sized when you do not set one, within the `--tpz-col-min-width` and `--tpz-col-max-width` tokens.
+
+- **`width` is held exactly.** The header and every cell are given it as their width, minimum and maximum, so a 56px icon column is 56px whatever the table's width — content that does not fit ends in an ellipsis rather than widening it.
+- **`maxWidth` caps a column at its content**, never past the number, and applies to the cells as well as the header.
+- **`grow` takes the spare width** — the room left when the columns are narrower than the table. Once any column grows, every other column keeps to its content (or its `width`) and the spare room is split between the growing ones in proportion: `grow: 2` takes twice what `grow: 1` does. Without `grow`, spare room is shared by every content-sized column, as it always was. This is AG Grid's `flex`.
+
+A width a user drags is stored in state and wins over the definition; double-clicking the resize handle forgets it. Everything here is decided in CSS from the markup, so a server render has the right widths before any script runs.
 
 `wrap` lets a cell take several lines instead of truncating — worth it for a notes column, ruinous for everything else. A number caps it: `wrap: 3` wraps and then stops after three lines. To let *every* row size itself to its content, use [`rowHeight`](styling.md#row-height) on the table — `"auto"` or a number — and `wrap: false` on the columns that should stay on one line.
 
@@ -210,6 +217,15 @@ Pinned columns are not draggable: pinning already decides where they go.
 ```
 
 Pinned columns keep an opaque background and their own edge shadow. A user can pin and unpin from the column menu, and their choice is kept in state.
+
+A column can also be frozen only at some widths — the name frozen on a phone, where the rest of the row scrolls under it, and left in place on a desktop where everything fits:
+
+```tsx
+{ key: "name", pin: { side: "start", below: 640 } }   // frozen while the table is under 640px
+{ key: "actions", pin: { side: "end", above: 1024 } } // frozen while it is 1024px or wider
+```
+
+The width is the table's own, not the window's, so a table in a sidebar behaves like a table on a phone. A column frozen by width stays where it is in the order rather than moving to the edge. The switch is a container query in a `<style>` element the table writes into its own markup, so a server render freezes the same columns as the browser and nothing is measured to decide it. A pin the user chooses from the column menu replaces one by width. If your Content Security Policy forbids inline styles, allow `style-src 'unsafe-inline'` or keep to plain `pin: "start"`.
 
 ## Monospace
 

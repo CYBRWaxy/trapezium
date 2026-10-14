@@ -118,8 +118,9 @@ import { Table } from "@trapezium/react"
 | `filter` | `boolean \| FilterKind \| { kind?, operators?, options?, defaultOperator? }` | the type's | `options` is a list of choices for a set filter, or a function returning one (possibly a promise), fetched on first open and remembered. |
 | `headerSearch` | `boolean` | the table's `headerSearch` | Search this column from its header. Opts one column in or out, whatever the table says. The table's `true` does not reach a column with no heading, or with `filter: false`; the table's `filters={false}` switches it off everywhere. |
 | `align` | `"start" \| "center" \| "end"` | the type's |
-| `width` / `minWidth` / `maxWidth` | `number` | — |
-| `pin` | `"start" \| "end"` | — |
+| `width` / `minWidth` / `maxWidth` | `number` | — (`width` is held exactly; `maxWidth` caps cells and header) |
+| `grow` | `number` | — (share of the spare width; others keep to their content) |
+| `pin` | `"start" \| "end" \| { side, below?, above? }` | — (the object freezes by the table's width, in CSS) |
 | `editable` | `boolean \| (row) => boolean` | `false` | The cells edit in place, with an editor chosen by the type. See [editing](editing.md#editing-in-place). |
 | `renderEditor` | `(context: EditorContext) => node` | the type's editor | Your own editor. `EditorContext` is `{ value, initialText, row, rowId, column, commit(value), cancel() }`. |
 | `parse` | `(value, row) => unknown` | — | Turns what the editor produced into what is stored, before `validate`. |

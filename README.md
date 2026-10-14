@@ -31,8 +31,10 @@ Trapezium is the one that is beautiful out of the box, configured in five lines,
 - **Server rendering that actually works.** Correct on the first paint, no effects, no layout shift, and optionally no client JavaScript at all.
 - **Styled by CSS variables**, so it matches your app by overriding a few tokens — or hand it Tailwind classes per slot and take over completely.
 - **Accessible by default.** Real table semantics, `aria-sort`, keyboard-operable menus, focus returned properly, AA contrast in both themes.
+- **Rows that do more.** Detail rows, one level of child rows, pinned rows at the top and bottom, and rows dragged into a new order — each one prop.
+- **Edit in place, by keyboard.** Cells move with the arrow keys and edit with the editor their type deserves — a combobox, a date picker — with validation and saving state.
 - **No dependencies.** Not React-only underneath, not an icon library, not a date library, not a popover library.
-- **Small.** About 26 kB of JavaScript gzipped for the React table and its engine, plus 5 kB of CSS — everything above included.
+- **Small for what it does.** About 45 kB of JavaScript gzipped for the React table and its engine, plus 7 kB of CSS — everything above included.
 
 ## Install
 

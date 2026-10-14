@@ -122,8 +122,10 @@ clipboard copy.
 
 key (required, supports dotted paths and synthetic ids) · header · description · type · accessor(row) ·
 format(ctx)=>string · formatOptions · render(ctx)=>node · renderHeader(ctx)=>node · sortable ·
-compare(a,b) · searchable · filter · headerSearch · align · width · minWidth · maxWidth ·
-pin("start"|"end") ·
+compare(a,b) · searchable · filter · headerSearch · align · width (held exactly) · minWidth ·
+maxWidth (caps cells too) · grow(number: share of spare width; others keep to content) ·
+pin("start"|"end"|{ side, below?, above? }: frozen only under/over that table width, by a CSS
+container query, so SSR matches; stays in place in the order) ·
 hidden · resizable · reorderable · wrap(boolean|number) · mono · icon · exportable · exportValue(ctx) · className ·
 headerClassName · meta · editable(boolean|(row)=>boolean) · renderEditor(ctx) · parse(value, row) ·
 validate(value, row)
@@ -499,7 +501,12 @@ floatingFilter:true→headerSearch · multiSortKey/suppressMultiSort→sortable=
 getRowStyle/getRowClass→rowClassName(row, index) · onRowClicked→onRowClick (clicks on links,
 buttons and inputs inside a row are already ignored) · rowHeight→rowHeight · getRowHeight→
 rowHeight:"auto" (the browser measures it; there is nothing to answer) · autoHeight→wrap:true ·
-wrapText→wrap · domLayout→maxHeight ·
+wrapText→wrap · domLayout→maxHeight · flex→grow · headerTooltip→description ·
+headerComponent→renderHeader · masterDetail/detailCellRenderer/isRowMaster→detail={{ render, canExpand }} ·
+editable/cellEditor/valueParser→editable/renderEditor/parse · onCellValueChanged→onCellEdit ·
+singleClickEdit→editTrigger="click" · ensureIndexVisible/setFocusedCell→focusCell(state, rowId, key) ·
+treeData (one level)→getParentId · pinnedTopRowData/pinnedBottomRowData→pinnedRows={{ top, bottom }} ·
+rowDragManaged/onRowDragEnd→rowReorder={{ onReorder }} · getContextMenuItems→onRowContextMenu ·
 serverSideDatasource→server={{ distinct, all }} with onStateChange · exportDataAsCsv→export ·
 ModuleRegistry.registerModules→nothing.
 
