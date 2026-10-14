@@ -247,6 +247,10 @@ What the adapters use to read the `sortable` and `headerSearch` options the same
 
 `getRows(options)` — with `getParentId`, families instead of rows, and `info` per row; with `reveal`, the page a row is on, reported as `page` · `sortRows` · `searchRows` · `filterRows` · `pageCount` · `resolveRowId` · `matchesFilter` · `isFilterUsable` · `normaliseFilter` · `rangeFilter(key, low, high)` · `isTextOperator` · `TEXT_OPERATORS` · `filterInputType(column, operator)`
 
+`createPipelineCache()` · `warmSearch(rows, columns, types, format, from?, budgetMs?)` · `warmSearchWhenIdle(rows, columns, types, format)` · `WARM_SEARCH_FROM` · `foldText(text)`
+
+Pass one `createPipelineCache()` per table as `getRows({ …, cache })` and each stage — filter, search, sort — is remembered until something it reads changes, so a page turn or a selection runs none of them. Rows are recognised by the identity of the array: replace it to change the data. `warmSearch` builds rows' search text ahead of a search, a slice at a time, and returns how far it got; `warmSearchWhenIdle` does the whole job in idle callbacks and returns a function that stops it (the adapters call it for a table with a search box over `WARM_SEARCH_FROM`, 2,000, rows). `foldText` is the folding every text comparison uses: lower case, no accents, ordinary spaces.
+
 `matchesFilter` answers `true` for an incomplete filter — one that asks nothing excludes nothing. Drop those with `isFilterUsable` before combining conditions yourself, or a half-typed filter will widen an OR to everything.
 
 The text operators — `contains`, `notContains`, `startsWith`, `endsWith` — are answered from the stored value written out and from the text the column's type shows for it, so `matchesFilter(value, { operator: "contains", value: "Aug" }, dateType, format)` is true of a date in August. Pass the same `format` the table was given, or a server and a browser will disagree about what a cell says.
