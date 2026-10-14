@@ -874,6 +874,29 @@
   white-space: nowrap;
 }
 
+/*
+  A badge in a cell is one line of the cell, exactly.
+
+  Out of a cell it is interface text at the interface size. In one, it sits on
+  a line that is `--tpz-text-cell-leading` tall, and anything taller than the
+  line — the 12px text, the padding, the border — makes the line taller and an
+  auto row with it. So here it is a step smaller than the text around it, in
+  `em` so it follows that text wherever it is, and exactly one line high with
+  the label centred rather than padded.
+
+  `vertical-align: top` is the other half. Aligned on its baseline, a box as
+  tall as the line still pokes out of it by however far the two fonts'
+  baselines disagree; aligned to the top it fills the line and nothing more.
+*/
+.tpz-td .tpz-badge {
+  box-sizing: border-box;
+  height: var(--tpz-text-cell-leading);
+  padding-block: 0;
+  font-size: calc(1em - 0.0625rem);
+  line-height: 1;
+  vertical-align: top;
+}
+
 .tpz-badge[data-colour]::before {
   width: 0.375rem;
   height: 0.375rem;
@@ -891,6 +914,14 @@
   overflow: hidden;
 }
 
+/*
+  `overflow: hidden` moves an inline box's baseline to its bottom edge, which
+  on a baseline-aligned line pushes the line box taller than the badges in it.
+*/
+.tpz-td .tpz-tags {
+  vertical-align: top;
+}
+
 .tpz-avatar {
   display: inline-block;
   width: 1.25rem;
@@ -901,12 +932,33 @@
   vertical-align: middle;
 }
 
+/*
+  In a cell the avatar keeps its size but takes up exactly one line: the
+  negative margins hand back what it has over the line's height, so it
+  overhangs the cell's padding — centred on the line — instead of making the
+  line, and an auto row, taller.
+*/
+.tpz-td .tpz-avatar {
+  margin-block: calc((var(--tpz-text-cell-leading) - 1.25rem) / 2);
+  vertical-align: top;
+}
+
 .tpz-boolean-true {
   color: var(--tpz-success);
 }
 
 .tpz-boolean-false {
   color: var(--tpz-muted-fg);
+}
+
+/*
+  The 14px icon, sat on the baseline of an 11px font, reaches a pixel above a
+  16px line and makes the row that much taller. Hung from the top of the line
+  and centred in it instead, it fits.
+*/
+.tpz-td :is(.tpz-boolean-true, .tpz-boolean-false) > svg {
+  margin-block: calc((var(--tpz-text-cell-leading) - 14px) / 2);
+  vertical-align: top;
 }
 
 .tpz-code {
@@ -972,6 +1024,26 @@
 
 .tpz-btn-icon {
   width: 1.75rem;
+  padding-inline: 0;
+}
+
+/*
+  A button in a cell — the usual way to put an action on a row — is one line of
+  the cell, for the reason a badge is: at its toolbar height of 1.75rem it is
+  taller than a compact row, and the row would grow to hold it. It takes the
+  cell's text size rather than the interface's, and hangs from the top of the
+  line so it fills the line exactly.
+*/
+.tpz-td .tpz-btn {
+  box-sizing: border-box;
+  height: var(--tpz-text-cell-leading);
+  padding-inline: 0.375rem;
+  font-size: inherit;
+  vertical-align: top;
+}
+
+.tpz-td .tpz-btn-icon {
+  width: var(--tpz-text-cell-leading);
   padding-inline: 0;
 }
 
