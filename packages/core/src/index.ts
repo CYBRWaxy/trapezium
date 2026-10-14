@@ -166,6 +166,8 @@ export {
 } from "./state.js"
 
 export { resolveSelection, selectableIds } from "./selection.js"
+export { INTERACTIVE_SELECTOR, isInteractiveTarget } from "./interaction.js"
+export { expandableIds, isDetailOpen } from "./detail.js"
 export { canResetSort, resolveSorting, sortLevels, sortPriority, sortsEqual } from "./sorting.js"
 export { HEADER_SEARCH_DEBOUNCE, resolveHeaderSearch } from "./header-search.js"
 export { SLOT_CLASSES, createClasses, cx } from "./classes.js"

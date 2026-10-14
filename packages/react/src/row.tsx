@@ -1,8 +1,9 @@
 import { memo } from "react"
-import type { AnyRow, FormatContext, TypeRegistry } from "@trapezium/core"
+import { isInteractiveTarget, type AnyRow, type FormatContext, type TypeRegistry } from "@trapezium/core"
 
 import { cellText, renderCell } from "./cell.js"
 import type { ClassResolver } from "./classes.js"
+import { Icon } from "./icon.js"
 import type { TableColumn, LinkComponent } from "./types.js"
 
 /**
@@ -48,6 +49,16 @@ export type RowProps<TRow extends AnyRow> = {
   onRowClick?: (row: TRow, event: React.MouseEvent) => void
   onToggle: (id: string, event: React.ChangeEvent<HTMLInputElement>) => void
   linkComponent?: LinkComponent
+  /**
+   * The expander, when the table has detail rows: whether this row has one,
+   * whether it is open, and the id of the detail row it controls. Absent when
+   * the table has no detail rows, so there is no expander column at all.
+   */
+  expander?: { expandable: boolean; expanded: boolean; detailId: string }
+  /** Opens or closes a row's detail. Identity-stable, like `onToggle`. */
+  onToggleExpanded?: (id: string) => void
+  /** A click anywhere on the row toggles its detail, not only the expander. */
+  toggleOnClick?: boolean
 }
 
 function RowInner<TRow extends AnyRow>({
@@ -69,13 +80,29 @@ function RowInner<TRow extends AnyRow>({
   onRowClick,
   onToggle,
   linkComponent: Link,
+  expander,
+  onToggleExpanded,
+  toggleOnClick,
 }: RowProps<TRow>) {
+  const togglesDetail = toggleOnClick === true && expander?.expandable === true
+  const clickable = onRowClick !== undefined || togglesDetail
+
   return (
     <tr
       className={classes("row", className)}
       data-selected={selected ? "true" : undefined}
-      data-clickable={onRowClick ? "true" : undefined}
-      onClick={onRowClick ? (event) => onRowClick(row, event) : undefined}
+      data-clickable={clickable ? "true" : undefined}
+      data-expanded={expander?.expanded ? "true" : undefined}
+      onClick={
+        clickable
+          ? (event) => {
+              // A link, a button, a checkbox in the row is what was meant, not the row.
+              if (isInteractiveTarget(event.target, event.currentTarget)) return
+              onRowClick?.(row, event)
+              if (togglesDetail) onToggleExpanded?.(id)
+            }
+          : undefined
+      }
     >
       {selectionMode && (
         <td
@@ -93,6 +120,31 @@ function RowInner<TRow extends AnyRow>({
             onClick={(event) => event.stopPropagation()}
             onChange={(event) => onToggle(id, event)}
           />
+        </td>
+      )}
+
+      {expander && (
+        <td
+          className={classes("expandCell")}
+          data-pin="start"
+          data-key="__expand"
+          style={{ left: pinOffsets["__expand"] ?? 0 }}
+        >
+          {expander.expandable && (
+            <button
+              type="button"
+              className="tpz-expander"
+              aria-expanded={expander.expanded}
+              aria-controls={expander.expanded ? expander.detailId : undefined}
+              aria-label={`${expander.expanded ? "Hide" : "Show"} details for row ${String(rowIndex + 1)}`}
+              onClick={(event) => {
+                event.stopPropagation()
+                onToggleExpanded?.(id)
+              }}
+            >
+              <Icon name="chevronRight" size={14} />
+            </button>
+          )}
         </td>
       )}
 

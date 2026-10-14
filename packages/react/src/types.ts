@@ -4,6 +4,7 @@ import type {
   CellContext,
   ColumnDef,
   Density,
+  DetailOptions,
   FormatContext,
   GetRowId,
   HeaderContext,
@@ -244,6 +245,24 @@ export type TableProps<TRow extends AnyRow = AnyRow> = {
   types?: Record<string, TypeDef>
   /** Locale, timezone, currency and the empty placeholder. */
   format?: Partial<FormatContext>
+
+  /**
+   * Detail rows: content that opens below a row and spans the table's width.
+   *
+   * ```tsx
+   * detail={{ render: ({ row }) => <InvoiceLines id={row.id} /> }}
+   * ```
+   *
+   * An expander column leads the table, with a button per row and one in the
+   * header that opens or closes every row on the page. Which rows are open is
+   * `state.expanded`, so it can be controlled, saved, and put in the URL with
+   * `include: ["expanded"]`; the server renders open rows open. A detail row
+   * is never counted, paged, sorted, selected or exported, and it is as tall
+   * as what is in it. `canExpand` leaves some rows without one, `keepMounted`
+   * keeps a closed detail alive so it does not fetch again when reopened, and
+   * `toggleOnRowClick` lets a click anywhere on the row open it.
+   */
+  detail?: DetailOptions<TRow, ReactNode>
 
   /** Makes each row a link. The leading cell becomes an anchor. */
   rowHref?: (row: TRow) => string

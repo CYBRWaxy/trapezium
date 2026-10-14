@@ -103,6 +103,7 @@
 
   --tpz-hover: color-mix(in oklab, var(--tpz-accent) 40%, transparent);
   --tpz-selected: color-mix(in oklab, var(--tpz-primary) 5%, transparent);
+  --tpz-detail-bg: color-mix(in oklab, var(--tpz-muted) 35%, var(--tpz-surface));
   --tpz-focus: 0 0 0 2px color-mix(in oklab, var(--tpz-ring) 45%, transparent);
 
   position: relative;
@@ -836,6 +837,100 @@
   opacity: 0.45;
 }
 
+/* ── Detail rows ───────────────────────────────────────────────────────── */
+
+/* The expander column is the selection column's twin: narrow, frozen, centred. */
+.tpz-expand-cell {
+  width: var(--tpz-select-width);
+  min-width: var(--tpz-select-width);
+  max-width: var(--tpz-select-width);
+  padding: 0;
+  text-align: center;
+}
+
+.tpz-expander {
+  display: inline-flex;
+  width: 1.25rem;
+  height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: calc(var(--tpz-radius) - 4px);
+  background: none;
+  padding: 0;
+  color: var(--tpz-muted-fg);
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.tpz-expander:hover {
+  background: var(--tpz-accent);
+  color: var(--tpz-fg);
+}
+
+.tpz-expander:focus-visible {
+  outline: none;
+  box-shadow: var(--tpz-focus);
+}
+
+.tpz-expander > svg {
+  transition: transform var(--tpz-transition);
+}
+
+.tpz-expander[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+
+/*
+  The row a detail opens into. It is part of the row above it, so it takes no
+  hover tint of its own and draws no line between the two — the line goes
+  under the detail, where the next row begins.
+*/
+.tpz-tbody .tpz-tr[data-expanded="true"] > .tpz-td {
+  border-bottom-color: transparent;
+}
+
+.tpz-tbody .tpz-detail-row:hover > .tpz-td {
+  background: var(--tpz-detail-bg);
+}
+
+/*
+  A closed detail kept alive by `keepMounted`. Said here as well as by the
+  attribute, because the card layout gives every row `display: block` and
+  would otherwise show it.
+*/
+.tpz[data-responsive] .tpz-detail-row[hidden],
+.tpz-detail-row[hidden] {
+  display: none;
+}
+
+.tpz-detail-cell {
+  height: auto;
+  padding: 0;
+  background: var(--tpz-detail-bg);
+  font-family: var(--tpz-font-sans);
+  font-size: var(--tpz-text-ui);
+  white-space: normal;
+}
+
+/*
+  Held to the width of the frame rather than the width of every column, and
+  frozen to the left edge: on a table that scrolls sideways, a detail as wide
+  as all of its columns would put most of itself where nobody is looking. The
+  frame's width comes from the container the root already is — `100cqi`, less
+  the frame's two borders — so nothing is measured, and the server's markup is
+  already the right shape.
+*/
+.tpz-detail {
+  position: sticky;
+  left: 0;
+  box-sizing: border-box;
+  width: calc(100cqi - 2px);
+  max-width: 100%;
+  padding: var(--tpz-cell-padding-y) var(--tpz-cell-padding-x);
+  overflow-wrap: anywhere;
+}
+
 /* ── Cell contents ─────────────────────────────────────────────────────── */
 
 .tpz-link {
@@ -1449,14 +1544,40 @@
   }
 
   /* A cell with no label to show — the selection box — keeps its own layout. */
-  .tpz[data-responsive="cards"] .tpz-select-cell {
+  .tpz[data-responsive="cards"] .tpz-select-cell,
+  .tpz[data-responsive="cards"] .tpz-expand-cell {
     justify-content: flex-start;
     width: auto;
     max-width: none;
   }
 
-  .tpz[data-responsive="cards"] .tpz-select-cell::before {
+  .tpz[data-responsive="cards"] .tpz-select-cell::before,
+  .tpz[data-responsive="cards"] .tpz-expand-cell::before,
+  .tpz[data-responsive="cards"] .tpz-detail-cell::before {
     content: none;
+  }
+
+  /*
+    A card's detail opens under the card, as part of it: the line that ends a
+    card moves from the row to its detail, and the detail fills the card's
+    width rather than a column's.
+  */
+  .tpz[data-responsive="cards"] .tpz-tr[data-expanded="true"] {
+    border-bottom: 0;
+  }
+
+  .tpz[data-responsive="cards"] .tpz-detail-row {
+    padding: 0;
+  }
+
+  .tpz[data-responsive="cards"] .tpz-detail-cell {
+    display: block;
+    text-align: left;
+  }
+
+  .tpz[data-responsive="cards"] .tpz-detail {
+    position: static;
+    width: auto;
   }
 }
 

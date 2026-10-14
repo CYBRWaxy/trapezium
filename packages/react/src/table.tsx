@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
   canResetSort,
+  expandableIds as expandableIdsOf,
+  isDetailOpen,
+  setExpanded,
+  toggleExpanded,
   formatWithType,
   copyText,
   downloadText,
@@ -23,6 +27,7 @@ import {
 
 import { createClasses } from "./classes.js"
 import { TableContext } from "./context.js"
+import { DetailRow } from "./detail-row.js"
 import { HeaderCell } from "./header-cell.js"
 import { Icon } from "./icon.js"
 import { InfiniteSentinel, Pagination } from "./pagination.js"
@@ -73,6 +78,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
     classNames,
     unstyled,
     theme,
+    detail,
   } = props
 
   const table = useTable(props)
@@ -212,7 +218,15 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
   // force at that moment rather than the ones in force when it was bound.
   const latestState = useRef(state)
   latestState.current = state
-  const columnCount = columns.length + (selection ? 1 : 0)
+  const columnCount = columns.length + (selection ? 1 : 0) + (detail ? 1 : 0)
+
+  /*
+    The base every generated element id is built from. The caller's `id` when
+    there is one, React's own otherwise — which is the same on the server and
+    in the browser, so an expander's `aria-controls` survives hydration.
+  */
+  const generatedId = useId()
+  const baseId = props.id ?? generatedId
 
   /*
     Frozen columns need real pixel offsets, and only the browser knows how wide
@@ -330,6 +344,29 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
 
     lastToggled.current = id
     apply((current) => toggleSelection(current, id, mode === "single"))
+  }, [])
+
+  /* ── Detail rows ───────────────────────────────────────────────────────── */
+
+  const expandableIds = useMemo(() => expandableIdsOf(rows, rowIds, detail), [rows, rowIds, detail])
+  const openOnPage = expandableIds.filter((id) => (state.expanded ?? []).includes(id)).length
+  const allOpen = expandableIds.length > 0 && openOnPage === expandableIds.length
+
+  /*
+    Details that have been open at least once, for `keepMounted`: a closed one
+    stays in the document only if there was ever something in it to keep.
+    Rendering every row's detail hidden from the start would mount, and fetch
+    for, a thousand details nobody has opened.
+  */
+  const mountedDetails = useRef(new Set<string>())
+
+  // Read through `handlers` like the selection toggle, so every row is handed
+  // the same function for the life of the table.
+  const toggleDetail = useCallback((id: string) => {
+    handlers.current.update((current) => toggleExpanded(current, id))
+  }, [])
+  const collapseDetail = useCallback((id: string) => {
+    handlers.current.update((current) => setExpanded(current, [id], false))
   }, [])
 
   /*
@@ -496,6 +533,28 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                   </th>
                 )}
 
+                {detail && (
+                  <th
+                    scope="col"
+                    className="tpz-th tpz-expand-cell"
+                    data-pin="start"
+                    data-key="__expand"
+                    style={{ left: pinOffsets["__expand"] ?? 0 }}
+                  >
+                    {expandableIds.length > 0 && (
+                      <button
+                        type="button"
+                        className="tpz-expander"
+                        aria-expanded={allOpen}
+                        aria-label={allOpen ? "Hide details for every row on this page" : "Show details for every row on this page"}
+                        onClick={() => update((current) => setExpanded(current, expandableIds, !allOpen))}
+                      >
+                        <Icon name="chevronRight" size={14} />
+                      </button>
+                    )}
+                  </th>
+                )}
+
                 {columns.map((column) => (
                   <HeaderCell
                     key={column.key}
@@ -553,6 +612,11 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
 
               {rows.map((row, rowIndex) => {
                 const id = rowIds[rowIndex]!
+                const detailId = `${baseId}-detail-${encodeURIComponent(id)}`
+                const expandable = detail ? (detail.canExpand ? detail.canExpand(row) : true) : false
+                const open = isDetailOpen(state, row, id, detail)
+                if (open) mountedDetails.current.add(id)
+                const mountDetail = detail !== undefined && (open || (detail.keepMounted === true && mountedDetails.current.has(id)))
 
                 /*
                   Resolved here rather than inside the row, so what the memo
@@ -561,8 +625,8 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                   changes every render and never means anything by it.
                 */
                 return (
+                  <Fragment key={id}>
                   <Row
-                    key={id}
                     row={row}
                     id={id}
                     rowIndex={rowIndex}
@@ -581,7 +645,24 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                     onRowClick={onRowClick ? handleRowClick : undefined}
                     onToggle={toggleRow}
                     linkComponent={Link}
+                    expander={detail ? { expandable, expanded: open, detailId } : undefined}
+                    onToggleExpanded={detail ? toggleDetail : undefined}
+                    toggleOnClick={detail?.toggleOnRowClick}
                   />
+                  {mountDetail && detail && (
+                    <DetailRow
+                      row={row}
+                      id={id}
+                      rowIndex={rowIndex}
+                      detailId={detailId}
+                      colSpan={columnCount}
+                      open={open}
+                      render={detail.render}
+                      classes={classes}
+                      onCollapse={collapseDetail}
+                    />
+                  )}
+                  </Fragment>
                 )
               })}
 
