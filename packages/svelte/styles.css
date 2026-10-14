@@ -68,7 +68,14 @@
   */
   --tpz-header-height: 2rem;
   --tpz-cell-padding-x: 0.5rem;
-  /* Only used by cells that wrap: a fixed-height row is centred, not padded. */
+  /*
+    Only used by cells that wrap: a fixed-height row is centred, not padded.
+
+    Chosen so one line of text comes out at exactly the row height: padding,
+    the 1rem line, padding again and the cell's 1px bottom border. 6 + 16 + 6
+    + 1 is 29, which fits a 32px row; compact sets its own below, because 29
+    does not fit in 28.
+  */
   --tpz-cell-padding-y: 0.375rem;
   --tpz-col-min-width: 8rem;
   --tpz-col-max-width: 20rem;
@@ -207,6 +214,8 @@
 .tpz[data-density="compact"] {
   --tpz-row-height: 1.75rem;
   --tpz-header-height: 1.75rem;
+  /* 5 + 16 + 5 + 1 = 27, inside 28. At 6px a one-line auto row came out 29. */
+  --tpz-cell-padding-y: 0.3125rem;
 }
 
 .tpz[data-density="relaxed"] {
