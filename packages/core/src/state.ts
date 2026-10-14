@@ -35,6 +35,7 @@ export const DEFAULT_STATE: TableState = {
   widths: {},
   pinned: {},
   density: "normal",
+  expanded: [],
 }
 
 /** Fills in everything a caller left out. */
@@ -294,6 +295,44 @@ export function setPin(state: TableState, key: string, pin: Pin | undefined): Ta
 
 export function togglePin(state: TableState, key: string, pin: Pin = "start"): TableState {
   return setPin(state, key, state.pinned[key] === pin ? undefined : pin)
+}
+
+/**
+ * Opens a row's detail if it is closed, closes it if it is open.
+ *
+ * Any number of rows may be open at once: opening one never closes another,
+ * because comparing two records side by side is half of what a detail row is
+ * for.
+ */
+export function toggleExpanded(state: TableState, id: string): TableState {
+  const expanded = state.expanded ?? []
+  return {
+    ...state,
+    expanded: expanded.includes(id) ? expanded.filter((entry) => entry !== id) : [...expanded, id],
+  }
+}
+
+/**
+ * Opens or closes the detail of every row named, leaving the others alone —
+ * what "expand all" means for the rows on screen.
+ */
+export function setExpanded(state: TableState, ids: readonly string[], open: boolean): TableState {
+  const expanded = new Set(state.expanded ?? [])
+  for (const id of ids) {
+    if (open) expanded.add(id)
+    else expanded.delete(id)
+  }
+  return { ...state, expanded: [...expanded] }
+}
+
+/** Closes every detail row, on this page and every other. */
+export function collapseAll(state: TableState): TableState {
+  return (state.expanded ?? []).length === 0 ? state : { ...state, expanded: [] }
+}
+
+/** Whether a row's detail is open. */
+export function isExpanded(state: TableState, id: string): boolean {
+  return (state.expanded ?? []).includes(id)
 }
 
 /** Everything that affects which rows are shown, cleared in one go. */

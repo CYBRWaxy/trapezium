@@ -45,6 +45,7 @@ export const URL_KEYS = {
   density: "d",
   selection: "sel",
   widths: "w",
+  expanded: "open",
 } as const
 
 export type UrlStateKey = keyof typeof URL_KEYS
@@ -54,7 +55,10 @@ export type UrlStateKey = keyof typeof URL_KEYS
  *
  * Selection and widths are left out: a selection can be thousands of ids long
  * and means nothing to whoever receives the link, and a dragged width is a
- * local preference rather than part of the view. Both can be opted into.
+ * local preference rather than part of the view. Open detail rows are left out
+ * too, because only some tables have them and a link that reopens somebody's
+ * rows is a choice the page should make. All three can be opted into with
+ * `include`.
  */
 export const DEFAULT_URL_KEYS: UrlStateKey[] = [
   "sort",
@@ -69,7 +73,7 @@ export const DEFAULT_URL_KEYS: UrlStateKey[] = [
 ]
 
 export type UrlOptions = {
-  /** Which parts of the state to carry. Defaults to everything but selection and widths. */
+  /** Which parts of the state to carry. Defaults to everything but selection, widths and open detail rows. */
   include?: UrlStateKey[]
   /**
    * The table's own defaults, where they differ from the library's.
@@ -185,6 +189,10 @@ export function stateToSearchParams(
     write("widths", widths.length ? widths.join(LIST) : undefined)
   }
 
+  if (include.has("expanded")) {
+    write("expanded", state.expanded?.length ? state.expanded.map(encodeValue).join(LIST) : undefined)
+  }
+
   return params
 }
 
@@ -267,6 +275,9 @@ export function stateFromSearchParams(
     }
     state.widths = map
   }
+
+  const expanded = read("expanded")
+  if (expanded !== null) state.expanded = splitList(expanded).map(decodeValue)
 
   return state
 }
@@ -396,6 +407,7 @@ export function pickUrlState(state: TableState, options: UrlOptions = {}): Parti
     else if (key === "density") picked.density = state.density
     else if (key === "selection") picked.selection = state.selection
     else if (key === "widths") picked.widths = state.widths
+    else if (key === "expanded") picked.expanded = state.expanded ?? []
   }
 
   return picked

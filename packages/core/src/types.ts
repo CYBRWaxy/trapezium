@@ -446,6 +446,15 @@ export type TableState = {
   /** Pinning set by the user, overriding the column definition. */
   pinned: Record<string, Pin>
   density: Density
+  /**
+   * Row ids whose detail row is open — see the table's `detail` option.
+   *
+   * Optional so that a state written before detail rows existed — a saved
+   * view, a test fixture, a type somebody spelled out by hand — is still a
+   * state. Every table fills it in as `[]`, and a missing key means nothing
+   * is open.
+   */
+  expanded?: string[]
 }
 
 /**
@@ -531,6 +540,58 @@ export type ServerSource<TRow = AnyRow> = {
    * writes the file from what comes back.
    */
   all?: (state: TableState) => readonly TRow[] | Promise<readonly TRow[]>
+}
+
+/** What a detail renderer is given. */
+export type DetailContext<TRow = AnyRow> = {
+  row: TRow
+  /** The row's stable id, as resolved by `getRowId`. */
+  rowId: string
+  /** Index within the rows currently rendered, not within the whole dataset. */
+  rowIndex: number
+  /** Closes this detail row — for a "done" button inside it. */
+  collapse(): void
+}
+
+/**
+ * Detail rows: content that opens below a row and spans the whole width.
+ *
+ * A row's detail is open when its id is in `state.expanded`, so which rows are
+ * open is controllable, survives a re-render, can be saved with a view and —
+ * with `include: ["expanded"]` — travels in the URL. The server renders open
+ * rows open.
+ *
+ * The detail row is not a row of the table in any other sense: it is never
+ * counted, paged, sorted, selected or exported, and it takes the height of
+ * whatever is put in it, in normal flow, with nothing measured.
+ *
+ * Written as methods so that a narrower row type is accepted by an adapter
+ * whose component is not generic, as `SelectionOptions` explains.
+ */
+export type DetailOptions<TRow = AnyRow, TNode = unknown> = {
+  /** What opens below the row. Anything the adapter can render. */
+  render(context: DetailContext<TRow>): TNode
+  /**
+   * Rows that have no detail. Their expander is left out, and they cannot be
+   * opened from the state either. Defaults to every row.
+   */
+  canExpand?(row: TRow): boolean
+  /**
+   * Keeps a closed detail in the document, hidden, rather than taking it out.
+   *
+   * For a detail that loads its own data: opening it a second time shows what
+   * it already has instead of fetching again. Defaults to `false`, which
+   * unmounts it, so a table of a thousand rows that have each been opened once
+   * is not holding a thousand details nobody can see.
+   */
+  keepMounted?: boolean
+  /**
+   * A click anywhere on the row opens and closes its detail, as well as the
+   * expander. Clicks on links, buttons, inputs, labels and menus inside the
+   * row are left to them. Defaults to `false`, so a row that is also a link
+   * or has `onRowClick` keeps doing what it did.
+   */
+  toggleOnRowClick?: boolean
 }
 
 /** How a row is identified across sorting, filtering and paging. */
