@@ -218,9 +218,15 @@ test.describe("in React", () => {
             .filter((row) => {
               const notes = row.querySelector('td[data-key="notes"]')
               if (!notes) return true
-              const range = document.createRange()
-              range.selectNodeContents(notes)
-              return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size <= 1
+              // The text's own lines: a range over the whole cell also returns a rect for each element in it.
+              const tops = new Set<number>()
+              const walker = document.createTreeWalker(notes, NodeFilter.SHOW_TEXT)
+              for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+                const range = document.createRange()
+                range.selectNodeContents(text)
+                for (const rect of range.getClientRects()) tops.add(Math.round(rect.top))
+              }
+              return tops.size <= 1
             })
             .map((row) => row.getBoundingClientRect().height),
         )
