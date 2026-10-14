@@ -53,7 +53,7 @@ import { Table } from "@trapezium/react"
 
 `PaginationOptions` — `{ mode?: "pages" \| "simple" \| "loadMore" \| "infinite", pageSize?: number, pageSizeOptions?: number[], siblings?: number }`
 
-`SelectionOptions` — `{ mode?: "single" \| "multiple", isSelectable?: (row, index) => boolean, onChange?: (ids, rows) => void }`. A row `isSelectable` refuses renders a disabled checkbox; the header checkbox and shift-click ranges skip it.
+`SelectionOptions` — `{ mode?: "single" \| "multiple", isSelectable?: (row, index) => boolean, onChange?: (ids, rows) => void, selectAll?: "page" \| "matching", dragSelect?: boolean }`. A row `isSelectable` refuses renders a disabled checkbox; the header checkbox and shift-click ranges skip it. `selectAll` (default `"page"`) is what the header checkbox selects; `"matching"` is every row the filters leave, fetched from `server.all` in server mode. `dragSelect` (default `false`) selects the rows a press sweeps across. Shift with an arrow key extends a selection, and Escape clears it, in every table with selection.
 
 `CellEdit` — `{ rowId, row, key, value, previousValue, pinned?: "top" \| "bottom" }`. `value` has been through the column's `parse`, and is in the shape of the value it replaces.
 
@@ -227,7 +227,7 @@ All pure `(state, …) => state`. Anything that changes which rows match resets 
 
 ### Detail rows and row clicks
 
-`moveRowTo(ids, rowId, targetId, "before" \| "after")` · `stepRow(ids, rowId, -1 \| 1)` · `applyRowMove(rows, ids, move)` · `canReorderRows(sort)` · `startRowDrag({ event, row, targetFor, onDrop, longPress? })` · `pinnedRowId(row, index, side, getRowId?)` · `pinnedOffset(index, count, side)` · `parentIdsWithChildren(rows, getParentId, getRowId?)` · `getRowsWithChildren(options)` · `expandableIds(rows, rowIds, detail)` · `isDetailOpen(state, row, id, detail)` · `isInteractiveTarget(target, within)` · `INTERACTIVE_SELECTOR`
+`moveRowTo(ids, rowId, targetId, "before" \| "after")` · `stepRow(ids, rowId, -1 \| 1)` · `applyRowMove(rows, ids, move)` · `canReorderRows(sort)` · `startRowDrag({ event, row, targetFor, onDrop, longPress? })` · `pinnedRowId(row, index, side, getRowId?)` · `pinnedOffset(index, count, side)` · `rangeSelection(base, ids, anchor, target)` · `startDragSelect(options)` · `createEdgeScroller(row, onScroll)` · `parentIdsWithChildren(rows, getParentId, getRowId?)` · `getRowsWithChildren(options)` · `expandableIds(rows, rowIds, detail)` · `isDetailOpen(state, row, id, detail)` · `isInteractiveTarget(target, within)` · `INTERACTIVE_SELECTOR`
 
 `expandableIds` is the rows among those given that have a detail — what "expand all" opens. `isDetailOpen` is whether a row's detail shows: named in `state.expanded`, and allowed by `canExpand`. `isInteractiveTarget` is the rule every row gesture follows: true when the click landed on a control inside `within` rather than on the row.
 

@@ -223,10 +223,19 @@ Disable with reorderable={false} on the table or a column. Pinned columns are no
 
 ## Selection
 
-selection · selection="single" · selection={{ mode, isSelectable(row, index), onChange(ids, rows) }}
+selection · selection="single" · selection={{ mode, isSelectable(row, index), onChange(ids, rows),
+selectAll: "page" | "matching", dragSelect: boolean }}
 A row `isSelectable` refuses gets a disabled checkbox; the header checkbox and shift-click ranges skip
 it. Ids come from getRowId (row.id, then row.uuid, then the index). The header selects the page on
-screen, not every page. Same forms in every adapter.
+screen by default; selectAll: "matching" makes it select every row the filters/search leave on every
+page (label "Select all N matching rows"; in server mode it fetches them with server.all(state),
+else selects the page and warns). dragSelect: true selects the rows a press sweeps across (5px
+threshold so a click stays a click; the ending click is swallowed; ignores links/buttons/inputs/the
+drag handle/an editing cell; auto-scrolls at the edges; Shift extends from the last chosen row,
+otherwise the sweep replaces the selection; mouse/pen only). Shift+ArrowUp/Down from a row checkbox
+(or any cell with cellNavigation) extends a range from an anchor (shrinks on the way back), and
+Escape clears the selection (editors and menus keep their own Escape). In code: rangeSelection(base,
+ids, anchor, target), startDragSelect. Same forms in every adapter.
 
 ## Detail rows (master/detail)
 

@@ -32,6 +32,18 @@ A selection set from outside — a controlled `state`, a saved view — is taken
 
 Click one checkbox, hold shift and click another, and everything between them is selected — or cleared, if the second row was already selected. The range runs over the rows on screen, in the order they are shown.
 
+### From the keyboard
+
+From a row's checkbox — or from any cell, with `cellNavigation` — Shift with the up or down arrow extends the selection a row at a time, and the keyboard goes with it. Going back towards where it began gives rows up again. Escape clears the selection, from a cell or a checkbox; an Escape an editor or a menu has used for itself never reaches it.
+
+### By dragging
+
+```tsx
+selection={{ dragSelect: true }}
+```
+
+Press on a row and drag across others, and every row between is selected — the table scrolls when the pointer nears an edge, so a sweep can go past the screen. A press that does not move is still a click, and the click that ends a sweep does not reach the row. A press on a control inside the row — a link, a button, the drag handle, a cell being edited — is left to it. Shift extends the selection from the last row chosen; without it, a sweep replaces the selection. Off by default, because dragging across a table is also how people select its text to copy. Not on touch screens, where a drag scrolls.
+
 ## Row identity
 
 Selection is a list of row ids. Those come from `getRowId`, which defaults to `row.id`, then `row.uuid`, then the array index. The index is wrong the moment the data sorts, so supply it whenever your rows have their own id:
@@ -42,9 +54,17 @@ Selection is a list of row ids. Those come from `getRowId`, which defaults to `r
 
 ## What "select all" means
 
-The header checkbox selects **the rows you can see** — the current page — not everything behind the pagination. That is what people expect, and the alternative silently selects thousands of rows nobody has looked at.
+By default the header checkbox selects **the rows you can see** — the current page — not everything behind the pagination. That is what people expect, and the alternative silently selects thousands of rows nobody has looked at.
 
 It shows an indeterminate state when some of the page is selected, and selecting a page leaves selections on other pages alone.
+
+When "everything that matches" is what you want, say so:
+
+```tsx
+selection={{ selectAll: "matching" }}
+```
+
+Now the header checkbox — named "Select all 1,240 matching rows" — selects every row the filters and the search leave, on every page, skipping any `isSelectable` refuses; ticked, it reads "Clear selection" and clears the lot. In server mode the table holds one page, so it asks `server.all(state)` for the matching rows and selects those, with the box marked busy meanwhile; without a `server.all` it selects the page and says why in development.
 
 ## Reading the selection
 
