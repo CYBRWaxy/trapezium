@@ -28,6 +28,10 @@ Accessibility is not a feature here; a feature that is not accessible does not s
 
 **Motion respects `prefers-reduced-motion`.**
 
+**Cell by cell, when you ask for it.** With `cellNavigation` — on automatically when a column is editable — the table is a `role="grid"` with one stop in the tab order, and the arrow keys, Home, End and the Page keys move between cells. Enter goes into a cell's link or button and Escape comes back; Space ticks a row's checkbox from its cell. Editors are labelled ("Edit Quantity"), a refused value is `aria-invalid` with its reason announced and linked by `aria-describedby`, a list editor is a WAI-ARIA combobox, and a cell that is saving is `aria-busy`. Escape in an editor closes the editor and nothing else. See [editing](editing.md).
+
+**Detail rows say what they control.** Each expander is named for its row, carries `aria-expanded`, and points at its open detail with `aria-controls`.
+
 **Infinite scroll keeps a button.** A list that can only be advanced by scrolling with a mouse excludes keyboard and switch users, so infinite mode has a real "load more" behind the observer.
 
 ## The two things that are yours

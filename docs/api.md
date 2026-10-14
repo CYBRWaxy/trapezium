@@ -45,12 +45,17 @@ import { Table } from "@trapezium/react"
 | `onSelectionChange` | `(ids: string[], rows: TRow[]) => void` | — | |
 | `export` | `boolean \| { filename?, clipboard?, scope?, fetchRows?, onExport? }` | `false` | CSV and clipboard. Contains the selected rows when there are any, and otherwise every matching row, not the page. `scope: "page"` narrows it; `fetchRows` supplies rows the table does not have and lets it write the file; `onExport` takes the whole thing over. |
 | `detail` | `DetailOptions<TRow>` | — | Detail rows: content that opens below a row, spanning the table. Open rows are `state.expanded`. See [rows](rows.md#detail-rows). |
+| `cellNavigation` | `boolean` | `true` when a column is `editable`, otherwise `false` | Cells the keyboard moves between: one tab stop, then arrows, Home, End and the Page keys. Makes the table a `role="grid"`. The active cell is `state.focus`. See [editing](editing.md#moving-between-cells). |
+| `onCellEdit` | `(edit: CellEdit<TRow>) => void \| Promise<unknown>` | — | Every committed edit of an `editable` column. Update your data with `edit.value`. A promise shows the cell as saving; a rejection marks it as failed and shows the data's value again. In Vue a prop, bound with `@cell-edit`. |
+| `editTrigger` | `"click" \| "doubleClick"` | `"doubleClick"` | What opens an editable cell with the mouse. Enter, F2 and typing open it from the keyboard either way. |
 
 `SortOptions` — `{ multiple?: boolean, reset?: boolean \| Sort[] }`. `multiple` (default `true`) lets a shift-click, or "Then sort" in a column's menu, add a level; set it to `false` for a backend that orders by one column. `reset` (default `true`) is the reset control in the toolbar: `true` returns to no sort, an array names the sort the table rests in — the control returns there and hides while the table is already in it — and `false` leaves the control out.
 
 `PaginationOptions` — `{ mode?: "pages" \| "simple" \| "loadMore" \| "infinite", pageSize?: number, pageSizeOptions?: number[], siblings?: number }`
 
 `SelectionOptions` — `{ mode?: "single" \| "multiple", isSelectable?: (row, index) => boolean, onChange?: (ids, rows) => void }`. A row `isSelectable` refuses renders a disabled checkbox; the header checkbox and shift-click ranges skip it.
+
+`CellEdit` — `{ rowId, row, key, value, previousValue, pinned?: "top" \| "bottom" }`. `value` has been through the column's `parse`, and is in the shape of the value it replaces.
 
 `DetailOptions` — `{ render: (context: DetailContext) => node, canExpand?: (row) => boolean, keepMounted?: boolean, toggleOnRowClick?: boolean }`. `DetailContext` is `{ row, rowId, rowIndex, collapse() }`. `canExpand` (default every row) leaves a row without an expander, and keeps it closed whatever the state says. `keepMounted` (default `false`) keeps a closed detail in the document, hidden, once it has been opened, so it does not load again. `toggleOnRowClick` (default `false`) opens a row's detail from a click anywhere on it, except on a control inside it.
 
@@ -110,6 +115,10 @@ import { Table } from "@trapezium/react"
 | `align` | `"start" \| "center" \| "end"` | the type's |
 | `width` / `minWidth` / `maxWidth` | `number` | — |
 | `pin` | `"start" \| "end"` | — |
+| `editable` | `boolean \| (row) => boolean` | `false` | The cells edit in place, with an editor chosen by the type. See [editing](editing.md#editing-in-place). |
+| `renderEditor` | `(context: EditorContext) => node` | the type's editor | Your own editor. `EditorContext` is `{ value, initialText, row, rowId, column, commit(value), cancel() }`. |
+| `parse` | `(value, row) => unknown` | — | Turns what the editor produced into what is stored, before `validate`. |
+| `validate` | `(value, row) => string \| boolean \| null \| undefined` | — | A message, or `false`, refuses the value; the editor stays open and says why. |
 | `hidden` | `boolean` | `false` |
 | `resizable` / `reorderable` | `boolean` | `true` |
 | `wrap` | `boolean \| number` | `false` | `true` wraps; a number caps it at that many lines; `false` keeps one line under any wrapping `rowHeight`. |
@@ -162,6 +171,9 @@ Passed as `server` instead of `true`, when the rows come from a server. Both mem
   pinned: Record<string, "start" | "end">
   density: "compact" | "normal" | "relaxed"
   expanded?: string[]   // rows whose detail is open; [] when absent
+  focus?: { rowId: string; key?: string; align?: "start" | "center" | "end" | "nearest" } | null
+                        // the active cell or row; setting it scrolls there, highlights it and, with
+                        // cellNavigation, focuses it — bringing it onto its page in client mode
 }
 ```
 
@@ -201,7 +213,7 @@ Everything below is exported from `@trapezium/core`, and re-exported from every 
 
 ### State
 
-`DEFAULT_STATE` · `createState(partial?)` · `toggleExpanded(state, id)` · `setExpanded(state, ids, open)` · `collapseAll(state)` · `isExpanded(state, id)` · `toggleSort(state, key, additive?)` · `setSort` · `addSort(state, key, direction)` · `removeSort(state, key)` · `clearSort` · `resetSort(state, to?)` · `setFilter` · `addFilter` · `removeFilter` · `removeFilterAt` · `clearFilters` · `setColumnSearch(state, key, text)` · `columnSearchText(state, key)` · `setMatch` · `setSearch` · `setPage` · `setPageSize` · `setDensity` · `toggleSelection` · `setSelected` · `clearSelection` · `hideColumn` · `showColumn` · `toggleColumn` · `setOrder` · `setWidth` · `clearWidth` · `setPin` · `togglePin` · `resetView` · `isFiltering`
+`DEFAULT_STATE` · `createState(partial?)` · `focusCell(state, rowId, key?, align?)` · `clearFocus(state)` · `toggleExpanded(state, id)` · `setExpanded(state, ids, open)` · `collapseAll(state)` · `isExpanded(state, id)` · `toggleSort(state, key, additive?)` · `setSort` · `addSort(state, key, direction)` · `removeSort(state, key)` · `clearSort` · `resetSort(state, to?)` · `setFilter` · `addFilter` · `removeFilter` · `removeFilterAt` · `clearFilters` · `setColumnSearch(state, key, text)` · `columnSearchText(state, key)` · `setMatch` · `setSearch` · `setPage` · `setPageSize` · `setDensity` · `toggleSelection` · `setSelected` · `clearSelection` · `hideColumn` · `showColumn` · `toggleColumn` · `setOrder` · `setWidth` · `clearWidth` · `setPin` · `togglePin` · `resetView` · `isFiltering`
 
 All pure `(state, …) => state`. Anything that changes which rows match resets `page` to 1.
 
@@ -214,6 +226,12 @@ All pure `(state, …) => state`. Anything that changes which rows match resets 
 `expandableIds(rows, rowIds, detail)` · `isDetailOpen(state, row, id, detail)` · `isInteractiveTarget(target, within)` · `INTERACTIVE_SELECTOR`
 
 `expandableIds` is the rows among those given that have a detail — what "expand all" opens. `isDetailOpen` is whether a row's detail shows: named in `state.expanded`, and allowed by `canExpand`. `isInteractiveTarget` is the rule every row gesture follows: true when the click landed on a control inside `within` rather than on the row.
+
+### Keyboard and editing
+
+`nextCell(grid, from, key, { ctrlKey?, pageRows?, rtl? })` · `entryCell(grid, focus)` · `isNavigationKey(key)` · `isCellEditable(column, row)` · `hasEditableColumns(columns)` · `editorKind(column, types)` · `editorOptions(column, kind, format)` · `editorStep(column)` · `toEditorText(value, kind, column, format)` · `fromEditorText(text, kind, column, previous, format)` · `validateEdit(column, value, row)` · `editValuesEqual(a, b)` · `typedCharacter(event)` · `placePopup(anchor, size, viewport, options?)`
+
+`nextCell` answers where the active cell goes for an arrow, Home, End, Page Up or Page Down over a `NavigationGrid` of `{ rows: rowIds, columns: keys }`, or `undefined` at an edge — nothing wraps. `entryCell` is the one cell in the tab order. `editorKind` is `"text" | "number" | "select" | "boolean" | "date" | "datetime" | "time" | "tags" | "custom" | "none"`. `toEditorText` and `fromEditorText` turn a value into an editor's starting text and back — cents edited as dollars, timestamps in the table's zone — and `fromEditorText` returns the shape of the value it replaces. `placePopup` puts a popup below an anchor, or above it when there is no room, inside the viewport.
 
 ### Sorting and header search
 
@@ -251,7 +269,7 @@ The text operators — `contains`, `notContains`, `startsWith`, `endsWith` — a
 
 `stateToSearchParams(state, options?, into?)` · `stateToQueryString` · `stateFromSearchParams` · `stateFromUrl` · `pickUrlState(state, options?)` · `applyStateToUrl(url, state, options?)` · `encodeFilters` · `decodeFilters` · `URL_KEYS` · `DEFAULT_URL_KEYS`
 
-`UrlOptions` — `{ include?: UrlStateKey[], prefix?: string, defaults?: Partial<TableState> }`. `UrlStateKey` is `sort` · `filters` · `match` · `search` · `page` · `pageSize` · `columns` · `pinned` · `density` · `selection` · `widths` · `expanded`; the last three are left out unless named in `include`. `defaults` are the table's own resting values where they differ from the library's — a page size of fifteen, say — and must be passed to every read and write so the two agree.
+`UrlOptions` — `{ include?: UrlStateKey[], prefix?: string, defaults?: Partial<TableState> }`. `UrlStateKey` is `sort` · `filters` · `match` · `search` · `page` · `pageSize` · `columns` · `pinned` · `density` · `selection` · `widths` · `expanded` · `focus`; the last four are left out unless named in `include`. `focus` is written `at=rowId:key`. `defaults` are the table's own resting values where they differ from the library's — a page size of fifteen, say — and must be passed to every read and write so the two agree.
 
 `pickUrlState` returns the keys the URL carries, with defaults filled in — what to pass as a controlled `state` when the URL is the source of truth, so selection and widths stay with the table.
 
