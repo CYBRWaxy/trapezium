@@ -1,6 +1,9 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
   INTERACTIVE_SELECTOR,
+  clearSelection,
+  rangeSelection,
+  startDragSelect,
   applyRowMove,
   canReorderRows,
   moveRowTo,
@@ -355,8 +358,147 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
     [rows, rowIds, selection],
   )
 
-  const selectedOnPage = selectableIds.filter((id) => table.selection.has(id)).length
-  const allSelected = selectableIds.length > 0 && selectedOnPage === selectableIds.length
+  /*
+    What the header checkbox selects. "page", the rows on screen, unless the
+    table was asked for "matching" — every row the filters and search leave.
+    In client mode those are all here; in server mode the table holds one page,
+    so they are fetched from `server.all` when the box is ticked.
+  */
+  const selectAllMatching = selection?.selectAll === "matching"
+  const matchingSelectable = useMemo(
+    () =>
+      selectAllMatching && !table.server
+        ? selectableIdsOf(matchedRows, matchedRows.map((row, index) => resolveRowId(row, index, getRowId)), selection?.isSelectable)
+        : undefined,
+    [selectAllMatching, table.server, matchedRows, getRowId, selection],
+  )
+  const headerScope = matchingSelectable ?? selectableIds
+  const selectedInScope = headerScope.filter((id) => table.selection.has(id)).length
+  const selectedOnPage = selectedInScope
+  const allSelected =
+    selectAllMatching && table.server
+      ? selectableIds.length > 0 && selectableIds.every((id) => table.selection.has(id)) && state.selection.length >= total
+      : headerScope.length > 0 && selectedInScope === headerScope.length
+  const [fetchingAll, setFetchingAll] = useState(false)
+
+  const toggleAll = () => {
+    if (allSelected) {
+      update((current) => (selectAllMatching ? clearSelection(current) : setSelected(current, selectableIds, false)))
+      return
+    }
+    if (!selectAllMatching || !table.server) {
+      update((current) => setSelected(current, headerScope, true))
+      return
+    }
+
+    // Every matching row lives on the server; ask for them.
+    const all = serverSource?.all
+    if (!all) {
+      warnAboutServerSelectAll()
+      update((current) => setSelected(current, selectableIds, true))
+      return
+    }
+    setFetchingAll(true)
+    void Promise.resolve(all(latestState.current))
+      .then((everyRow) => {
+        const ids = selectableIdsOf(everyRow, everyRow.map((row, index) => resolveRowId(row, index, getRowId)), selection?.isSelectable)
+        update((current) => setSelected(current, ids, true))
+      })
+      .finally(() => setFetchingAll(false))
+  }
+
+  /*
+    A range built by the keyboard or by a sweep of the pointer: the rows
+    between an anchor and wherever the gesture has reached, on top of what was
+    selected when it began. Recomputed from that each time, so going back gives
+    rows up.
+  */
+  const range = useRef<{ anchor: string; base: string[] } | undefined>(undefined)
+
+  const extendRange = (target: string, start: string, extend: boolean) => {
+    if (!range.current) {
+      const anchor = extend ? (lastToggled.current ?? start) : start
+      range.current = { anchor, base: extend ? [...latestState.current.selection] : [] }
+    }
+    const { anchor, base } = range.current
+    lastToggled.current = anchor
+    update((current) => ({ ...current, selection: rangeSelection(base, selectableIds, anchor, target) }))
+  }
+
+  /* A press on a row that moves becomes a sweep that selects every row it crosses. */
+  const onBodyPointerDown = (event: React.PointerEvent<HTMLTableSectionElement>) => {
+    if (!selection?.dragSelect || selection.mode !== "multiple" || event.button !== 0) return
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const tr = target.closest<HTMLElement>("tr[data-row-id]")
+    if (!tr || isInteractiveTarget(target, tr) || target.closest('[data-editing="true"]')) return
+    const start = tr.dataset["rowId"] ?? ""
+    if (!selectableIds.includes(start)) return
+    const extend = event.shiftKey
+    // Held now: React empties the event's `currentTarget` once this handler returns.
+    const tbody = event.currentTarget
+
+    range.current = undefined
+    startDragSelect({
+      event: event.nativeEvent,
+      row: tr,
+      rowFor: (element) => {
+        const over = element.closest<HTMLElement>("tr[data-row-id]")
+        return over && tbody.contains(over) && selectableIds.includes(over.dataset["rowId"] ?? "") ? over : undefined
+      },
+      onSweep: (_, to) => extendRange(to.dataset["rowId"] ?? start, start, extend),
+    })
+  }
+
+  /*
+    Keys that belong to the selection, whether or not the keyboard moves
+    between cells: Shift with an arrow extends it a row at a time from the
+    row the keyboard is on, and Escape clears it.
+  */
+  const onSelectionKeyDown = (event: React.KeyboardEvent<HTMLTableElement>): boolean => {
+    if (!selection || event.defaultPrevented) return false
+    const target = event.target
+    if (!(target instanceof HTMLElement)) return false
+    const tr = target.closest<HTMLElement>("tr[data-row-id]")
+    if (!tr || tr.closest("thead, tbody[data-pinned], .tpz-detail-row")) return false
+    // Only from a cell, or the row's own checkbox — never from inside an editor or a control of the caller's.
+    const onCell = target.tagName === "TD" || target.matches("input.tpz-checkbox")
+    if (!onCell) return false
+
+    if (event.key === "Escape" && latestState.current.selection.length > 0) {
+      event.preventDefault()
+      range.current = undefined
+      update((current) => clearSelection(current))
+      return true
+    }
+
+    if (event.shiftKey && !event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown") && selection.mode === "multiple") {
+      const id = tr.dataset["rowId"] ?? ""
+      const at = rowIds.indexOf(id)
+      const next = rowIds[at + (event.key === "ArrowDown" ? 1 : -1)]
+      event.preventDefault()
+      if (next === undefined) return true
+      if (!range.current) range.current = { anchor: id, base: [...latestState.current.selection] }
+      extendRange(next, id, false)
+
+      // The keyboard goes with the range: to the same column of the next row, or its checkbox.
+      const key = target.tagName === "TD" ? target.dataset["key"] : "__select"
+      const cell = key === undefined ? undefined : cellElement(next, key)
+      const focusable = target.tagName === "TD" ? cell : cell?.querySelector<HTMLElement>("input.tpz-checkbox")
+      focusable?.focus({ preventScroll: true })
+      focusable?.scrollIntoView?.({ block: "nearest" })
+      return true
+    }
+
+    // Anything else ends a keyboard range: the next Shift+arrow starts a new one.
+    if (event.key !== "Shift") range.current = undefined
+    return false
+  }
+
+  const onTableKeyDown = (event: React.KeyboardEvent<HTMLTableElement>) => {
+    if (onSelectionKeyDown(event)) return
+    if (navigable) onGridKeyDown(event)
+  }
 
   // Shift-click selects a range, which is the one selection gesture people
   // expect from a table and almost never get.
@@ -1061,7 +1203,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
             aria-label={props["aria-label"]}
             role={navigable ? (treegrid ? "treegrid" : "grid") : undefined}
             aria-readonly={navigable ? !editable : undefined}
-            onKeyDown={navigable ? onGridKeyDown : undefined}
+            onKeyDown={navigable || selection ? onTableKeyDown : undefined}
             onFocus={navigable ? onGridFocus : undefined}
             onClick={editable && props.editTrigger === "click" ? onEditPointer : undefined}
             onDoubleClick={editable && props.editTrigger !== "click" ? onEditPointer : undefined}
@@ -1098,10 +1240,16 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                         ref={(node) => {
                           if (node) node.indeterminate = selectedOnPage > 0 && !allSelected
                         }}
-                        aria-label={allSelected ? "Clear selection" : "Select all rows on this page"}
-                        onChange={() =>
-                          update((current) => setSelected(current, selectableIds, !allSelected))
+                        aria-label={
+                          allSelected
+                            ? "Clear selection"
+                            : selectAllMatching
+                              ? `Select all ${total.toLocaleString()} matching rows`
+                              : "Select all rows on this page"
                         }
+                        aria-busy={fetchingAll || undefined}
+                        disabled={fetchingAll}
+                        onChange={toggleAll}
                       />
                     )}
                   </th>
@@ -1159,7 +1307,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
 
             {pinnedBody("top", pinnedTop)}
 
-            <tbody className={classes("tbody")}>
+            <tbody className={classes("tbody")} onPointerDown={selection?.dragSelect ? onBodyPointerDown : undefined}>
               {loading && rows.length === 0 && <SkeletonRows columns={columnCount} />}
 
               {error && (
@@ -1358,6 +1506,19 @@ const NO_HANDLE = { draggable: false, disabled: true }
 function handleOf(draggable: boolean, disabled: boolean): { draggable: boolean; disabled: boolean } {
   if (!draggable) return NO_HANDLE
   return disabled ? HANDLE_OFF : HANDLE_ON
+}
+
+let warnedAboutSelectAll = false
+
+/* "Select every matching row" with the rows on a server and no way to ask for them selects one page. */
+function warnAboutServerSelectAll(): void {
+  if (warnedAboutSelectAll) return
+  if (typeof process !== "undefined" && process.env["NODE_ENV"] === "production") return
+  warnedAboutSelectAll = true
+  console.warn(
+    "[trapezium] selection.selectAll is \"matching\" in server mode, but the table has no server.all to fetch " +
+      "the matching rows from, so the header checkbox selected the page on screen. Pass server={{ all: (state) => … }}.",
+  )
 }
 
 let warnedAboutEditing = false
