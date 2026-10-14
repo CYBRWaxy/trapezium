@@ -25,10 +25,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); }
 /* A cell renderer that is taller than a line, so auto height has something to
    size itself to. */
-.stacked { display: flex; flex-direction: column; gap: 0.125rem; padding-block: 0.125rem; }
-.stacked span { color: light-dark(#6b6257, rgb(255 255 255 / 55%)); font-size: 0.6875rem; }
+/* Cell renderers follow the rules in llms.txt: the cell's own font size, nothing above the first line. */
+.stacked { display: flex; flex-direction: column; gap: 0.125rem; }
+.stacked span { color: light-dark(#6b6257, rgb(255 255 255 / 55%)); }
 
-.row-action { border: 1px solid light-dark(#e0d8c8, rgb(255 255 255 / 15%)); border-radius: 6px; background: none; padding: 0.125rem 0.5rem; color: inherit; font: inherit; font-size: 0.6875rem; cursor: pointer; }
+.row-action { box-sizing: border-box; height: var(--tpz-text-cell-leading); border: 1px solid light-dark(#e0d8c8, rgb(255 255 255 / 15%)); border-radius: 6px; background: none; padding: 0 0.5rem; color: inherit; font: inherit; line-height: 1; vertical-align: top; cursor: pointer; }
 
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 .themes { display: flex; gap: 0.25rem; }
