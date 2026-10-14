@@ -97,6 +97,18 @@ the rows it just added: the rows already there are not rebuilt, their cell rende
 and the scroll position is not disturbed. That is what makes rowHeight:"auto" affordable on a long
 infinite list.
 
+## Performance (client mode, 100,000 rows, 26 columns, Node, ms)
+
+sort by text ~97 · set filter ~29 · search keystroke ~33–39 once each row's search text is built
+(built in idle time automatically when the table has a search box and ≥2,000 rows; cold first
+keystroke ~0.7–1.2 s otherwise) · page turn / selection / active-cell move / detail toggle ~0.01
+(each pipeline stage is remembered until its inputs change: rows by identity — replace the array
+to change data — columns, types, format, and that stage's part of the state). Headless:
+getRows({ ..., cache: createPipelineCache() }), warmSearch(rows, columns, types, format, from,
+budgetMs), warmSearchWhenIdle(...). Append pagination keeps the DOM bounded to loaded rows; past
+~10,000 loaded rows the browser's cost per appended page grows (268 ms at 20,000 rows) — use
+mode "pages" for very long lists. Numbers and the windowed-append proposal: docs/performance.md.
+
 ## Export
 
 export={{ filename, scope: "matching" | "page", clipboard, fetchRows(state), onExport(state, rows) }}
