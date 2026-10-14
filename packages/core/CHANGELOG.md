@@ -1,5 +1,81 @@
 # @trapezium/core
 
+## 0.4.0
+
+### Minor Changes
+
+- bf3711b: **Child rows, one level.** `getParentId(row)` draws each row under the row it
+  belongs to, with a toggle on the parent that folds its children away
+  (`state.collapsed`). Children stay with their parent through sorting, filtering
+  and paging — a parent is shown for the sake of a matching child, and pages and
+  totals count parents, so a family is never split across two pages. Children are
+  selected, edited and exported like any other row, under their parent.
+- 3174bd4: **Column sizing.** A column's `width` is now held exactly and `maxWidth` caps
+  its cells as well as its header. `grow` gives a column the table's spare width
+  while the rest keep to their content. `pin: { side, below }` freezes a column
+  only under (or `above`) a width of the table, by a container query, so a server
+  render freezes the same columns. Hovered and selected frozen cells keep an
+  opaque background again.
+- 1672fc6: **A context-menu hook.** `onRowContextMenu(row, event, info)` hands over the row
+  and the cell under the pointer — its column, the text it shows, and the row as
+  the table's own copy writes it — so a "Copy cell" or "Copy row" menu matches the
+  table without searching the DOM. `cellDisplayText` gives the text any cell shows.
+- 43ea506: **Detail rows.** `detail={{ render }}` opens content below a row, spanning the
+  table, from an expander column that leads it. Any number of rows can be open at
+  once, and which are open is `state.expanded` — controllable, saved with a view,
+  and carried in the URL with `include: ["expanded"]`. The server renders open
+  rows open. `canExpand` leaves rows without a detail, `keepMounted` keeps a closed
+  one alive so it does not fetch again, and `toggleOnRowClick` opens it from
+  anywhere on the row. A detail row is never counted, paged, sorted, selected or
+  exported, and is as tall as its content with nothing measured.
+  
+  `onRowClick` now ignores clicks on any control inside the row — a link, button,
+  input, label or menu — as the documentation said it did.
+  
+  New in the core: `toggleExpanded`, `setExpanded`, `collapseAll`, `isExpanded`,
+  `expandableIds`, `isDetailOpen`, `isInteractiveTarget`, `INTERACTIVE_SELECTOR`.
+  New class slots `expandCell`, `detailRow` and `detailCell`, and `id` in every
+  adapter.
+- d909e5e: **Inline cell editing.** `editable` on a column and `onCellEdit` on the table.
+  A cell opens on double-click, Enter, F2 or typing, into an editor that suits its
+  type — a text box, a number box, a filterable list of its options, or the
+  browser's date and time pickers — or your own `renderEditor`. Enter, Tab and
+  leaving the cell commit; Escape cancels. `parse` and `validate` per column. The
+  table never changes the data: it reports each edit, and a returned promise shows
+  the cell as saving and then as failed if it rejects.
+  
+  **Keyboard cell navigation.** `cellNavigation` — on by itself when a column is
+  editable — makes the table a grid the arrow keys, Home, End and the Page keys
+  move through, with one stop in the tab order. The active cell is `state.focus`,
+  so setting it from outside (`focusCell`) brings that row onto its page, scrolls
+  to it, highlights it and puts the keyboard there.
+- 449efc6: **Headers.** `renderHeader`, typed since 0.1.1 but never drawn, now replaces a
+  header's text with the sort, menu, search and resize controls still around it.
+  A column's `description` shows as an accessible tooltip on the header, with no
+  renderer needed.
+- b050fd1: **Faster at 100,000 rows.** The pipeline remembers each stage until something it
+  reads changes, so a page turn, a selection or a moved cursor no longer filters,
+  searches and sorts everything again. Search matches each row as one remembered
+  string — about seven times faster per keystroke — built in idle time when the
+  table has a search box. `createPipelineCache`, `warmSearch` and
+  `warmSearchWhenIdle` are exported for headless use.
+- e9e3ad6: **Pinned rows.** `pinnedRows={{ top, bottom }}` holds rows outside the data at
+  the top and bottom of the table — an editable "new entry" row, a totals row.
+  They are drawn through the same columns, renderers and editors, stay in view
+  while the body scrolls, and are never filtered, sorted, paged, counted, selected
+  or exported. An edit of one says so, and the keyboard reaches them.
+- 174f228: **Row reorder by drag.** `rowReorder={{ onReorder }}` leads each row with a drag
+  handle; a drag shows where the row will land and scrolls near the edges, and Alt
+  with an arrow key moves a row from the keyboard. `onReorder` gets the row and its
+  new neighbours, and a returned promise shows the new order until it settles.
+  Offered only while the table is unsorted; child rows stay with their parent; a
+  long press starts a drag on a touch screen without ever blocking a scroll.
+- 590c646: **More ways to select.** `selection={{ selectAll: "matching" }}` makes the
+  header checkbox select every matching row on every page, asking `server.all`
+  in server mode. `selection={{ dragSelect: true }}` selects the rows a press
+  sweeps across. Shift with an arrow key extends a selection from the keyboard,
+  and Escape clears it.
+
 ## 0.3.0
 
 ### Minor Changes

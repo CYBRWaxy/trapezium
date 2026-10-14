@@ -4,7 +4,7 @@ Every `@trapezium/*` package is released together at the same version, so this o
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [semver](https://semver.org/). Before 1.0 a minor version can add to the API but never removes or renames anything without saying so here, with a migration note.
 
-## Unreleased
+## 0.4.0 — 2026-10-15
 
 ### Added
 
