@@ -351,8 +351,9 @@ function EditingSection({ theme }: { theme: "light" | "dark" | undefined }) {
           canExpand: (invoice) => invoice.notes !== null,
         }}
         columns={[
-          { key: "reference", header: "Invoice", type: "id" },
-          { key: "customer.name", header: "Customer", editable: true },
+          // Frozen only while the table is narrow, where the rest of the row scrolls under it.
+          { key: "reference", header: "Invoice", type: "id", pin: { side: "start", below: 640 } },
+          { key: "customer.name", header: "Customer", editable: true, grow: 1 },
           {
             key: "amount",
             type: "currency",
@@ -361,7 +362,7 @@ function EditingSection({ theme }: { theme: "light" | "dark" | undefined }) {
           },
           { key: "status", type: "badge", formatOptions: { options: STATUS_OPTIONS }, editable: true },
           { key: "due_date", header: "Due", type: "date", editable: true },
-          { key: "paid", type: "boolean", editable: true },
+          { key: "paid", type: "boolean", editable: true, width: 80 },
         ]}
         onCellEdit={(edit) => {
           setLog((current) => [`${edit.key} of ${edit.rowId}: ${String(edit.previousValue)} → ${String(edit.value)}`, ...current])
