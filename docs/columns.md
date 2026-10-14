@@ -181,7 +181,7 @@ Widths are in pixels. Columns are content-sized when you do not set one, within 
 
 - **`width` is held exactly.** The header and every cell are given it as their width, minimum and maximum, so a 56px icon column is 56px whatever the table's width — content that does not fit ends in an ellipsis rather than widening it.
 - **`maxWidth` caps a column at its content**, never past the number, and applies to the cells as well as the header.
-- **`grow` takes the spare width** — the room left when the columns are narrower than the table. Once any column grows, every other column keeps to its content (or its `width`) and the spare room is split between the growing ones in proportion: `grow: 2` takes twice what `grow: 1` does. Without `grow`, spare room is shared by every content-sized column, as it always was. This is AG Grid's `flex`.
+- **`grow` takes the spare width** — the room left when the columns are narrower than the table. Once any column grows, every other column keeps to its content — up to `--tpz-col-max-width`, where wrapping text wraps — (or its `width`) and the spare room is split between the growing ones in proportion: `grow: 2` takes twice what `grow: 1` does. Without `grow`, spare room is shared by every content-sized column, as it always was. This is AG Grid's `flex`.
 
 A width a user drags is stored in state and wins over the definition; double-clicking the resize handle forgets it. Everything here is decided in CSS from the markup, so a server render has the right widths before any script runs.
 

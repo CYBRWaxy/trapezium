@@ -12,7 +12,9 @@
  *   that cannot push the cell wider, so long content ends in an ellipsis.
  * - A column with a `maxWidth` grows with its content up to that width, by
  *   the same box, capped — and takes no share of spare width, which would
- *   carry it past its cap.
+ *   carry it past its cap. The box is as wide as its content up to the cap
+ *   (`--tpz-col-max-width` without one), so wrapping text wraps there rather
+ *   than at its longest word.
  * - With any column given `grow`, every other column keeps to its content or
  *   its width, and the growing columns share what is left, in proportion.
  */
@@ -54,6 +56,8 @@ export function columnSizing<TRow, TNode>(columns: readonly ResolvedColumn<TRow,
     } else {
       if (column.minWidth !== undefined) style["minWidth"] = `${String(column.minWidth)}px`
       if (column.maxWidth !== undefined) {
+        // On the cell as well as its box, or the max-width token would cap a wider maxWidth.
+        style["maxWidth"] = `${String(column.maxWidth)}px`
         style["--tpz-col-cap"] = `${String(column.maxWidth)}px`
         box = true
       }
@@ -67,6 +71,8 @@ export function columnSizing<TRow, TNode>(columns: readonly ResolvedColumn<TRow,
       } else if (growing.length > 0) {
         size = "fit"
       }
+      // A cell that keeps to its content and may wrap would otherwise shrink to its longest word.
+      if (size === "fit") box = true
     }
 
     sizing[column.key] = { size, style, box }

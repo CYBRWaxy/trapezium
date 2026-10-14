@@ -816,6 +816,16 @@
   min-width: 100%;
 }
 
+/*
+  A cell keeping to its content has a width of nothing (below), so wrapping
+  text in it would fold at every word. Its box is as wide as the content on
+  one line, up to the cap — the column's `maxWidth`, or the max-width token.
+*/
+.tpz-td[data-size="fit"] > .tpz-box {
+  width: max-content;
+  max-width: calc(var(--tpz-col-cap, var(--tpz-col-max-width)) - 2 * var(--tpz-cell-padding-x) - 1px);
+}
+
 .tpz-th[data-size="fixed"] .tpz-th-inner {
   width: 0;
   min-width: 100%;
@@ -1966,11 +1976,14 @@
       was given, or the one a person dragged it to — and an inline style
       outranks every rule in this file. The width means nothing once the row is
       a card, and left alone it makes every field a column-sized box down the
-      left of the card with a lone unsized one reaching the right edge.
+      left of the card with a lone unsized one reaching the right edge. A held
+      width comes as a minimum and a maximum too.
       `!important` is the only thing in the cascade that beats an inline style,
       which is why it is here and nowhere else in the layout.
     */
     width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
     height: auto;
     align-items: baseline;
     justify-content: space-between;
@@ -1981,14 +1994,20 @@
     white-space: normal;
   }
 
-  /* The leading link is sized as a column too, and a card has no columns. */
-  .tpz[data-responsive="cards"] .tpz-lead {
+  /* The leading link and a sized cell's box are sized as a column too, and a card has no columns. */
+  .tpz[data-responsive="cards"] .tpz-lead,
+  .tpz[data-responsive="cards"] .tpz-box {
     min-width: 0;
     max-width: none;
   }
 
+  .tpz[data-responsive="cards"] .tpz-td[data-size="fixed"] > .tpz-box {
+    width: auto;
+  }
+
   .tpz[data-responsive="cards"] .tpz-td[data-pin],
   .tpz[data-responsive="cards"] .tpz-th[data-pin],
+  .tpz[data-responsive="cards"] .tpz-td[data-pin-when],
   .tpz[data-responsive="cards"] .tpz-pinned-body .tpz-td {
     position: static;
     box-shadow: none;

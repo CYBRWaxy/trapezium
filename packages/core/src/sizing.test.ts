@@ -23,7 +23,7 @@ describe("column sizing", () => {
   it("caps a content-sized column at its maxWidth, and floors it at its minWidth", () => {
     expect(columnSizing(resolve([{ key: "note", maxWidth: 200, minWidth: 60 }]))["note"]).toEqual({
       size: "fit",
-      style: { minWidth: "60px", "--tpz-col-cap": "200px" },
+      style: { minWidth: "60px", maxWidth: "200px", "--tpz-col-cap": "200px" },
       box: true,
     })
   })
@@ -34,7 +34,7 @@ describe("column sizing", () => {
 
   it("gives spare width to growing columns, keeping the rest to their content", () => {
     const sizing = columnSizing(resolve([{ key: "name" }, { key: "notes", grow: 1 }, { key: "icon", width: 56 }]))
-    expect(sizing["name"]?.size).toBe("fit")
+    expect(sizing["name"]).toEqual({ size: "fit", style: {}, box: true })
     expect(sizing["notes"]).toEqual({ size: "grow", style: {}, box: false })
     expect(sizing["icon"]?.size).toBe("fixed")
   })

@@ -40,7 +40,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Changed
 
-- **`width` is held exactly.** It was only a starting width: the table spread spare room across every column, so a 56px icon column could render 130–210px wide. Now the header and every cell take it as width, minimum and maximum, and content that does not fit ends in an ellipsis. `maxWidth` likewise caps the cells, where before it only reached the header. If you relied on a `width` growing to fill the table, use `grow` instead. Every adapter.
+- **`width` is held exactly.** It was only a starting width: the table spread spare room across every column, so a 56px icon column could render 130–210px wide. Now the header and every cell take it as width, minimum and maximum, and content that does not fit ends in an ellipsis. `maxWidth` likewise caps the cells, where before it only reached the header. A column with `wrap` and a `width` now wraps at that width. If you relied on a `width` growing to fill the table, use `grow` or `maxWidth` instead. Every adapter.
 
 - `onRowClick` now ignores a click on any control inside the row — a link, button, input, select, label, `[role="menu…"]`, or anything marked `data-tpz-interactive` — as the documentation already said it did. Before, only the table's own links and checkboxes were excluded, so a button rendered in a cell also fired the row's click. Every adapter.
 - `TableState` has optional `expanded`, `collapsed` and `focus` keys. They are optional so that a state written before they existed still type-checks; every table fills them in as `[]`, `[]` and `null`.
