@@ -50,6 +50,7 @@ export {
   parentIdsWithChildren,
   setCollapsed,
   toggleCollapsed,
+  applyRowMove,
   copyText,
   downloadText,
 } from "@trapezium/core"
@@ -75,6 +76,8 @@ export type {
   PinnedRows,
   RowHeight,
   RowInfo,
+  RowMove,
+  RowReorderOptions,
   SelectionInput,
   SelectionOptions,
   SelectOption,

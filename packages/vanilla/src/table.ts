@@ -27,6 +27,11 @@ import {
   INTERACTIVE_SELECTOR,
   isDetailOpen,
   isInteractiveTarget,
+  applyRowMove,
+  canReorderRows,
+  moveRowTo,
+  startRowDrag,
+  stepRow,
   pinnedOffset,
   pinnedRowId,
   setExpanded,
@@ -100,6 +105,8 @@ import {
   type ResolvedSelection,
   type RowHeight,
   type RowInfo,
+  type RowMove,
+  type RowReorderOptions,
   type SelectOption,
   type SelectionInput,
   type ServerSource,
@@ -254,6 +261,16 @@ export type TableOptions<TRow extends AnyRow = AnyRow> = {
    * says so with `edit.pinned`.
    */
   pinnedRows?: PinnedRows<TRow>
+
+  /**
+   * Rows moved by hand: a drag handle leads each row, and Alt with the up or
+   * down arrow moves the row from the keyboard. The table never reorders
+   * `data`: `onReorder` gets the row and its new neighbours, and — if it
+   * returns a promise — the new order shows until it settles. Offered only
+   * while the table is unsorted; a child moves among its siblings, and a
+   * parent takes its children with it.
+   */
+  rowReorder?: RowReorderOptions<TRow>
 
   /**
    * Detail rows: content that opens below a row and spans the table's width.
@@ -455,6 +472,10 @@ export function createTable<TRow extends AnyRow>(
   let renderedEditable = false
   /** The cell being edited, if one is. Never on a server: an editor is opened by a person. */
   let editing: { rowId: string; key: string; editor: EditorHandle } | undefined
+  /** A move still being saved, shown by applying it to the data it was made on. */
+  let pendingMove: { data: readonly TRow[]; move: RowMove<TRow> } | undefined
+  /** Says where a moved row went, for a screen reader. In the frame only while rows can be moved. */
+  const announcer = el("div", { class: "tpz-sr", role: "status", "aria-live": "polite" })
   /** Edits still being saved, with the value each is saving, and the ones that failed, with why. */
   const pendingEdits = new Map<string, unknown>()
   const failedEdits = new Map<string, string>()
@@ -772,11 +793,20 @@ export function createTable<TRow extends AnyRow>(
     return { ...DEFAULT_FORMAT, ...settings.format }
   }
 
+  /** The data, with a move that is still being saved applied to it. */
+  function viewData(): readonly TRow[] {
+    const data = settings.data
+    if (!pendingMove || pendingMove.data !== data) return data
+    const ids = data.map((row, index) => resolveRowId(row, index, settings.getRowId))
+    return applyRowMove(data, ids, pendingMove.move)
+  }
+
   function current(reveal?: string) {
     const pagination = paginationOf(settings)
+    const data = viewData()
     const { visible, hidden } = resolveColumns<TRow, Node | string>({
       columns: settings.columns,
-      rows: settings.data,
+      rows: data,
       state,
       types: registry(),
       resizable: settings.resizable,
@@ -786,7 +816,7 @@ export function createTable<TRow extends AnyRow>(
     })
 
     const result = getRows<TRow, Node | string>({
-      rows: settings.data,
+      rows: data,
       columns: visible,
       state: pagination ? state : { ...state, pageSize: 0 },
       types: registry(),
@@ -901,7 +931,7 @@ export function createTable<TRow extends AnyRow>(
     const cls = classes()
     const selection = selectionOf()
     const selectionMode = selection?.mode
-    const columnCount = columns.length + (selectionMode ? 1 : 0) + (settings.detail ? 1 : 0)
+    const columnCount = columns.length + (selectionMode ? 1 : 0) + (settings.detail ? 1 : 0) + (settings.rowReorder ? 1 : 0)
     const rowIds = rows.map((row, index) => resolveRowId(row, index, settings.getRowId))
     const selectable = selectableIds(rows, rowIds, selection?.isSelectable)
 
@@ -993,7 +1023,18 @@ export function createTable<TRow extends AnyRow>(
     toolbar.style.display = !hasControls && state.filters.length === 0 ? "none" : ""
 
     const shape = shapeOf(columns, selection)
-    navColumns = [...(selectionMode ? ["__select"] : []), ...(settings.detail ? ["__expand"] : []), ...columns.map((column) => column.key)]
+    navColumns = [
+      ...(settings.rowReorder ? ["__drag"] : []),
+      ...(selectionMode ? ["__select"] : []),
+      ...(settings.detail ? ["__expand"] : []),
+      ...columns.map((column) => column.key),
+    ]
+
+    if (settings.rowReorder) {
+      if (announcer.parentNode !== frame) frame.append(announcer)
+    } else {
+      announcer.remove()
+    }
     const pinnedIds = (side: PinnedSide) =>
       (settings.pinnedRows?.[side] ?? []).map((row, index) => pinnedRowId(row, index, side, settings.getRowId))
     const gridIds = [...pinnedIds("top"), ...rowIds, ...pinnedIds("bottom")]
@@ -1210,6 +1251,40 @@ export function createTable<TRow extends AnyRow>(
     // Only the active cell is in the tab order; the rest are reached by arrow.
     const entry = build.entry
     const tabindex = (key: string) => (entry === undefined ? undefined : entry.rowId === id && entry.key === key ? 0 : -1)
+
+    const reorder = settings.rowReorder
+    if (reorder) {
+      const cell = el("td", { class: cls("dragCell"), "data-pin": "start", "data-key": "__drag", tabindex: tabindex("__drag") })
+      const draggable = !pinned && (reorder.canDrag ? reorder.canDrag(row) : true)
+      if (draggable) {
+        const disabled = !canReorderRows(state.sort)
+        const handle = el(
+          "button",
+          {
+            type: "button",
+            class: "tpz-drag-handle",
+            tabindex: entry ? -1 : undefined,
+            "aria-label": `Move row ${String(index + 1)}`,
+            "aria-disabled": disabled ? "true" : undefined,
+            title: disabled ? "Clear the sort to move rows" : "Drag to move, or Alt with an arrow key",
+          },
+          [icon("grip", 14)],
+        )
+        handle.addEventListener("click", (event) => event.stopPropagation())
+        handle.addEventListener("pointerdown", (event) => {
+          if (event.button !== 0 || !canReorderRows(state.sort)) return
+          beginRowDrag(id, tr, event)
+        })
+        handle.addEventListener("keydown", (event) => {
+          if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return
+          event.preventDefault()
+          event.stopPropagation()
+          stepRowBy(id, event.key === "ArrowUp" ? -1 : 1)
+        })
+        cell.append(handle)
+      }
+      tr.append(cell)
+    }
 
     if (clicks) {
       tr.addEventListener("click", (event) => {
@@ -1836,6 +1911,13 @@ export function createTable<TRow extends AnyRow>(
       }
     }
 
+    // Alt with an arrow moves the row, from any of its cells.
+    if (settings.rowReorder && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault()
+      stepRowBy(rowId, event.key === "ArrowUp" ? -1 : 1)
+      return
+    }
+
     if (isNavigationKey(event.key) && !event.altKey && !event.shiftKey) {
       const next = nextCell({ rows: gridRowIds(), columns: navColumns }, { rowId, key }, event.key, {
         ctrlKey: event.ctrlKey || event.metaKey,
@@ -1867,6 +1949,94 @@ export function createTable<TRow extends AnyRow>(
       }
     }
   })
+
+  /* ── Moving rows ───────────────────────────────────────────────────────── */
+
+  /** A row's parent among the data, for a table with child rows. */
+  function parentOf(row: TRow, dataIds: ReadonlySet<string>): string | undefined {
+    const parent = settings.getParentId?.(row)
+    return parent !== null && parent !== undefined && parent !== "" && dataIds.has(String(parent)) ? String(parent) : undefined
+  }
+
+  /**
+   * The rows a row moves among: every matching row at its level, not only
+   * this page — the other children of its parent, for a child. In server mode
+   * the page is all there is.
+   */
+  function siblingsOf(rowId: string): { ids: string[]; parentId: string | undefined } {
+    const data = settings.data
+    const dataIds = new Set(data.map((row, index) => resolveRowId(row, index, settings.getRowId)))
+    const row = lookupRow(rowId)?.row
+    const parentId = row === undefined ? undefined : parentOf(row, dataIds)
+    const pool = settings.server ? renderedRows : current().matched
+    const ids: string[] = []
+    pool.forEach((candidate, index) => {
+      if (parentOf(candidate, dataIds) === parentId) ids.push(resolveRowId(candidate, index, settings.getRowId))
+    })
+    return { ids, parentId }
+  }
+
+  function reportMove(rowId: string, result: { afterId: string | null; beforeId: string | null; order: string[] }, parentId: string | undefined) {
+    const reorder = settings.rowReorder
+    const row = lookupRow(rowId)?.row
+    if (!reorder || row === undefined) return
+    const move: RowMove<TRow> = { rowId, row, afterId: result.afterId, beforeId: result.beforeId, ...(parentId ? { parentId } : {}) }
+    announcer.textContent = `Moved to position ${String(result.order.indexOf(rowId) + 1)} of ${String(result.order.length)}`
+
+    const outcome = reorder.onReorder(move)
+    if (!isPromiseLike(outcome)) return
+
+    const made = { data: settings.data, move }
+    pendingMove = made
+    render()
+    const settle = () => {
+      if (pendingMove !== made) return
+      pendingMove = undefined
+      render()
+    }
+    outcome.then(settle, () => {
+      settle()
+      announcer.textContent = "The move was not saved"
+    })
+  }
+
+  function beginRowDrag(id: string, tr: HTMLElement, event: PointerEvent) {
+    const { ids, parentId } = siblingsOf(id)
+    const draggedIsChild = parentId !== undefined
+    startRowDrag({
+      event,
+      row: tr,
+      targetFor: (element) => {
+        const over = element.closest<HTMLElement>("tr[data-row-id]")
+        if (!over || !body.contains(over)) return undefined
+        const overId = over.dataset["rowId"] ?? ""
+        if (ids.includes(overId)) return over
+        // A parent is dropped beside a parent: a child row it passes over stands for its own parent.
+        if (!draggedIsChild && over.dataset["depth"] === "1") {
+          let previous = over.previousElementSibling
+          while (previous instanceof HTMLElement && previous.dataset["depth"] === "1") previous = previous.previousElementSibling
+          return previous instanceof HTMLElement && ids.includes(previous.dataset["rowId"] ?? "") ? previous : undefined
+        }
+        return undefined
+      },
+      onDrop: (target, position) => {
+        const result = moveRowTo(ids, id, target.dataset["rowId"] ?? "", position)
+        if (result) reportMove(id, result, parentId)
+      },
+    })
+  }
+
+  function stepRowBy(id: string, delta: -1 | 1) {
+    if (!canReorderRows(state.sort)) return
+    const { ids, parentId } = siblingsOf(id)
+    const result = stepRow(ids, id, delta)
+    if (!result) return
+    reportMove(id, result, parentId)
+    // The keyboard stays on the row it moved, wherever the rows were drawn again.
+    const cell = cellElement(id, "__drag")
+    const handle = cell?.querySelector<HTMLElement>(".tpz-drag-handle")
+    ;(handle ?? cell)?.focus()
+  }
 
   /** The id of a row's detail, which its expander points at. */
   function detailId(id: string): string {
@@ -2008,6 +2178,7 @@ export function createTable<TRow extends AnyRow>(
       navigable: navigable(),
       editable: renderedEditable,
       tree: Boolean(settings.getParentId),
+      reorder: Boolean(settings.rowReorder),
       href: Boolean(settings.rowHref),
       click: Boolean(settings.onRowClick),
       rowClass: Boolean(settings.rowClassName),
@@ -2233,6 +2404,8 @@ export function createTable<TRow extends AnyRow>(
   let selectionCell: { mode: "single" | "multiple"; cell: HTMLElement } | undefined
   /** The header cell above the expanders, kept across renders like the selection's. */
   let expandHeader: HTMLElement | undefined
+  /** The header cell above the drag handles. */
+  let dragHeader: HTMLElement | undefined
 
   /**
    * Brings the header into line with the state, keeping every cell it can.
@@ -2260,6 +2433,15 @@ export function createTable<TRow extends AnyRow>(
     headerRow.className = cls("headerRow")
 
     const cells: HTMLElement[] = []
+
+    if (settings.rowReorder) {
+      dragHeader ??= el("th", { scope: "col", class: "tpz-th tpz-drag-cell", "data-pin": "start", "data-key": "__drag" }, [
+        el("span", { class: "tpz-sr", text: "Move" }),
+      ])
+      cells.push(dragHeader)
+    } else {
+      dragHeader = undefined
+    }
 
     if (selectionMode) {
       if (selectionCell?.mode !== selectionMode) {

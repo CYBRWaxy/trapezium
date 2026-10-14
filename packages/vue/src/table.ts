@@ -32,6 +32,7 @@ import type {
   PinnedRows,
   RowHeight,
   RowInfo,
+  RowReorderOptions,
   SelectionInput,
   TableSlots,
   TableState,
@@ -185,6 +186,12 @@ export const Table = defineComponent({
      * paged, counted, selected or exported.
      */
     pinnedRows: { type: Object as PropType<PinnedRows<AnyRow>>, default: undefined },
+    /**
+     * Rows moved by hand, with a drag handle or Alt and an arrow key.
+     * `onReorder` gets the row and its new neighbours and may return a promise.
+     * Offered only while the table is unsorted.
+     */
+    rowReorder: { type: Object as PropType<RowReorderOptions<AnyRow>>, default: undefined },
     emptyMessage: { type: String, default: undefined },
 
     /**
@@ -385,6 +392,7 @@ export const Table = defineComponent({
       rowClassName: props.rowClassName,
       getParentId: props.getParentId,
       pinnedRows: props.pinnedRows,
+      rowReorder: props.rowReorder,
       emptyMessage: props.emptyMessage,
       buildHref: props.buildHref,
       className: props.className,

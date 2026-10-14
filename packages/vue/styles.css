@@ -994,6 +994,68 @@
   box-shadow: inset 2px 0 0 var(--tpz-danger);
 }
 
+/* ── Moving rows ───────────────────────────────────────────────────────── */
+
+/* The handle column is the selection column's twin. */
+.tpz-drag-cell {
+  width: var(--tpz-select-width);
+  min-width: var(--tpz-select-width);
+  max-width: var(--tpz-select-width);
+  padding: 0;
+  text-align: center;
+}
+
+.tpz-drag-handle {
+  display: inline-flex;
+  width: 1.25rem;
+  height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: calc(var(--tpz-radius) - 4px);
+  background: none;
+  padding: 0;
+  color: var(--tpz-muted-fg);
+  vertical-align: middle;
+  cursor: grab;
+  /* A long press on a touch screen picks the row up, not the page's text or a callout. */
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.tpz-drag-handle:hover {
+  background: var(--tpz-accent);
+  color: var(--tpz-fg);
+}
+
+.tpz-drag-handle:focus-visible {
+  outline: none;
+  box-shadow: var(--tpz-focus);
+}
+
+.tpz-drag-handle[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.tpz[data-row-dragging="true"] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.tpz-tr[data-dragging="true"] > .tpz-td {
+  opacity: 0.45;
+}
+
+/* Where the row would land: a line along the edge it would land against. */
+.tpz-tr[data-drop="before"] > .tpz-td {
+  box-shadow: inset 0 2px 0 var(--tpz-primary);
+}
+
+.tpz-tr[data-drop="after"] > .tpz-td {
+  box-shadow: inset 0 -2px 0 var(--tpz-primary);
+}
+
 /* ── Pinned rows ───────────────────────────────────────────────────────── */
 
 /* The header row is its height plus the line under it. */
@@ -1851,6 +1913,7 @@
 
   /* A cell with no label to show — the selection box — keeps its own layout. */
   .tpz[data-responsive="cards"] .tpz-select-cell,
+  .tpz[data-responsive="cards"] .tpz-drag-cell,
   .tpz[data-responsive="cards"] .tpz-expand-cell {
     justify-content: flex-start;
     width: auto;
@@ -1858,6 +1921,7 @@
   }
 
   .tpz[data-responsive="cards"] .tpz-select-cell::before,
+  .tpz[data-responsive="cards"] .tpz-drag-cell::before,
   .tpz[data-responsive="cards"] .tpz-expand-cell::before,
   .tpz[data-responsive="cards"] .tpz-detail-cell::before {
     content: none;
