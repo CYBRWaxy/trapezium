@@ -273,10 +273,30 @@ function Playground() {
  */
 function EditingSection({ theme }: { theme: "light" | "dark" | undefined }) {
   const [rows, setRows] = useState(() => invoices.slice(0, 60))
-  const [state, setState] = useState<TableState>(() => createState({ pageSize: 10 }))
+  const [state, setState] = useState<TableState>(() => createState({ pageSize: 20 }))
   const [log, setLog] = useState<string[]>([])
 
   const target = rows[41]
+
+  // A "new entry" row above the data and a totals row below it, outside the data itself.
+  const draft = {
+    ...rows[0]!,
+    id: "draft",
+    reference: "New",
+    customer: { name: "", email: "" },
+    amount: 0,
+    status: "draft",
+    due_date: "",
+    notes: null,
+  }
+  const totals = {
+    ...draft,
+    id: "totals",
+    reference: "Total",
+    amount: rows.reduce((sum, invoice) => sum + invoice.amount, 0),
+    status: "",
+    paid: null as unknown as boolean,
+  }
 
   return (
     <section id="editing">
@@ -304,7 +324,9 @@ function EditingSection({ theme }: { theme: "light" | "dark" | undefined }) {
         state={state}
         onStateChange={setState}
         selection
-        pagination={{ pageSize: 10 }}
+        maxHeight={380}
+        pinnedRows={{ top: [draft], bottom: [totals] }}
+        pagination={{ pageSize: 20 }}
         format={{ currency: "AUD", locale: "en-AU", timeZone: "Australia/Sydney" }}
         detail={{
           render: ({ row, collapse }) => (
@@ -335,6 +357,12 @@ function EditingSection({ theme }: { theme: "light" | "dark" | undefined }) {
         ]}
         onCellEdit={(edit) => {
           setLog((current) => [`${edit.key} of ${edit.rowId}: ${String(edit.previousValue)} → ${String(edit.value)}`, ...current])
+          // An edit of the "new entry" row adds an invoice with that one field filled in.
+          if (edit.pinned === "top") {
+            const id = `inv_new_${String(rows.length + 1)}`
+            setRows((current) => [setPath({ ...draft, id, reference: `INV-NEW-${String(current.length + 1)}` }, edit.key, edit.value), ...current])
+            return
+          }
           const apply = () =>
             setRows((current) =>
               current.map((invoice) =>

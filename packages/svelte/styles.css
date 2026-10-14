@@ -744,7 +744,13 @@
   the keyboard out from under the sticky header.
 */
 .tpz-td[tabindex] {
-  scroll-margin-top: var(--tpz-header-height);
+  scroll-margin-top: calc(var(--tpz-sticky-top) + var(--tpz-pinned-top, 0px));
+  scroll-margin-bottom: var(--tpz-pinned-bottom, 0px);
+}
+
+/* A pinned row's own cells are never under themselves. */
+.tpz-pinned-body .tpz-td[tabindex] {
+  scroll-margin: 0;
 }
 
 .tpz-td[tabindex]:focus {
@@ -990,8 +996,9 @@
 
 /* ── Pinned rows ───────────────────────────────────────────────────────── */
 
+/* The header row is its height plus the line under it. */
 .tpz[data-sticky-header="true"] {
-  --tpz-sticky-top: var(--tpz-header-height);
+  --tpz-sticky-top: calc(var(--tpz-header-height) + 1px);
 }
 
 /*

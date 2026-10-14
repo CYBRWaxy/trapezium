@@ -946,6 +946,13 @@ export function createTable<TRow extends AnyRow>(
       root.style.removeProperty("--tpz-row-height")
     }
 
+    // How much of the scroll area the pinned rows cover, so a cell brought into view is not left under them.
+    for (const side of ["top", "bottom"] as const) {
+      const count = settings.pinnedRows?.[side]?.length ?? 0
+      if (count > 0) root.style.setProperty(`--tpz-pinned-${side}`, `calc(${String(count)} * var(--tpz-row-height))`)
+      else root.style.removeProperty(`--tpz-pinned-${side}`)
+    }
+
     if (settings.ariaLabel) table.setAttribute("aria-label", settings.ariaLabel)
     else table.removeAttribute("aria-label")
 

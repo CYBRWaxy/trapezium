@@ -301,8 +301,13 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
       style["--tpz-max-height"] = typeof maxHeight === "number" ? `${String(maxHeight)}px` : maxHeight
     }
     if (typeof rowHeight === "number") style["--tpz-row-height"] = `${String(rowHeight)}px`
+    // How much of the scroll area the pinned rows cover, so a cell brought into view is not left under them.
+    const top = props.pinnedRows?.top?.length ?? 0
+    const bottom = props.pinnedRows?.bottom?.length ?? 0
+    if (top > 0) style["--tpz-pinned-top"] = `calc(${String(top)} * var(--tpz-row-height))`
+    if (bottom > 0) style["--tpz-pinned-bottom"] = `calc(${String(bottom)} * var(--tpz-row-height))`
     return Object.keys(style).length > 0 ? (style as React.CSSProperties) : undefined
-  }, [maxHeight, rowHeight])
+  }, [maxHeight, rowHeight, props.pinnedRows?.top?.length, props.pinnedRows?.bottom?.length])
 
   /*
     Worked out once for the table rather than per cell. The old form asked
