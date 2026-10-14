@@ -249,6 +249,45 @@ export type CellContext<TRow = AnyRow, TNode = unknown> = {
   format: FormatContext
 }
 
+/** What a custom editor is given. */
+export type EditorContext<TRow = AnyRow, TNode = unknown> = {
+  /** The value the cell holds now. */
+  value: unknown
+  /**
+   * The character typed to open the editor, when typing opened it — the
+   * editor should start with this in place of the value, as a spreadsheet
+   * does. Otherwise `""`.
+   */
+  initialText: string
+  row: TRow
+  rowId: string
+  column: ResolvedColumn<TRow, TNode>
+  /** Ends the edit with a new value, which then goes through `parse` and `validate`. */
+  commit(value: unknown): void
+  /** Ends the edit with nothing changed. */
+  cancel(): void
+}
+
+/**
+ * One committed edit, as `onCellEdit` receives it.
+ *
+ * The table has not changed anything: update your data with `value` and the
+ * cell shows it. Return a promise to have the cell show that it is saving;
+ * if the promise rejects, the cell goes back to what the data says and is
+ * marked as having failed.
+ */
+export type CellEdit<TRow = AnyRow> = {
+  rowId: string
+  row: TRow
+  /** The column's key. */
+  key: string
+  /** The new value, after `parse`, in the shape of the value it replaces. */
+  value: unknown
+  previousValue: unknown
+  /** Set when the row is one of `pinnedRows`, so a "new entry" row can be told apart. */
+  pinned?: "top" | "bottom"
+}
+
 /** What a header renderer is given. */
 export type HeaderContext<TRow = AnyRow, TNode = unknown> = {
   column: ResolvedColumn<TRow, TNode>
@@ -371,6 +410,43 @@ export type ColumnDef<TRow = AnyRow, TNode = unknown> = {
 
   /** Excluded from CSV export and clipboard copy. Useful for an actions column. */
   exportable?: boolean
+
+  /**
+   * The cells can be edited in place: `true` for every row, or a function
+   * that says which. Double-click a cell (or click, with `editTrigger:
+   * "click"`), press Enter or F2 on it, or start typing, and it becomes an
+   * editor suited to its type — a text box, a number box with the column's
+   * precision, a filterable list of `formatOptions.options`, a date or time
+   * picker. Enter, Tab and leaving the cell commit; Escape cancels.
+   *
+   * The table never changes the data: a committed edit is handed to the
+   * table's `onCellEdit`, and the cell shows what the data says once the
+   * caller has updated it. Defaults to `false`.
+   */
+  editable?: boolean | ((row: TRow) => boolean)
+
+  /**
+   * Replaces the built-in editor with your own — a date-range picker, a
+   * popover, a search against your API. Call `commit(value)` with the new
+   * value or `cancel()` to put the cell back. The value goes through `parse`
+   * and `validate` like any other.
+   */
+  renderEditor?: (context: EditorContext<TRow, TNode>) => TNode
+
+  /**
+   * Turns what the editor produced into the value to store — `"12"` into
+   * `12`, a name into an id. Runs before `validate`. The built-in editors
+   * already produce a value of the column's type, so this is for the
+   * exceptions.
+   */
+  parse?: (value: unknown, row: TRow) => unknown
+
+  /**
+   * Whether an edited value may be committed. Return a message — or `false`
+   * for a generic one — to refuse it: the editor stays open, marked invalid,
+   * with the message beside it. `true`, `undefined` or nothing means fine.
+   */
+  validate?: (value: unknown, row: TRow) => string | boolean | null | undefined
 
   /** Extra class names for this column's cells, on top of the defaults. */
   className?: string

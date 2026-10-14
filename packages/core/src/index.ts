@@ -15,6 +15,7 @@ export type {
   Align,
   AnyRow,
   CellContext,
+  CellEdit,
   CellFocus,
   ColumnDef,
   ColumnFilter,
@@ -22,6 +23,7 @@ export type {
   Density,
   DetailContext,
   DetailOptions,
+  EditorContext,
   FilterKind,
   FilterOperator,
   FilterOption,
@@ -172,6 +174,20 @@ export { resolveSelection, selectableIds } from "./selection.js"
 export { INTERACTIVE_SELECTOR, isInteractiveTarget } from "./interaction.js"
 export { expandableIds, isDetailOpen } from "./detail.js"
 export { entryCell, isNavigationKey, nextCell } from "./navigation.js"
+export {
+  editValuesEqual,
+  editorKind,
+  editorOptions,
+  editorStep,
+  fromEditorText,
+  hasEditableColumns,
+  isCellEditable,
+  placePopup,
+  toEditorText,
+  typedCharacter,
+  validateEdit,
+} from "./editing.js"
+export type { EditorKind, PopupRect } from "./editing.js"
 export type { NavigationGrid, NavigationKey, NextCellOptions } from "./navigation.js"
 export { canResetSort, resolveSorting, sortLevels, sortPriority, sortsEqual } from "./sorting.js"
 export { HEADER_SEARCH_DEBOUNCE, resolveHeaderSearch } from "./header-search.js"
