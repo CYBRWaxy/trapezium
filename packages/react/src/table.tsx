@@ -1099,6 +1099,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
       columnKey: column ? column.key : null,
       column,
       text: column ? cellDisplayText(row, column, { types: registry, format: formatting, rowId: id }) : null,
+      rowText: toDelimitedText([row], { columns: shown, types: registry, format: formatting, delimiter: "\t", header: false, getRowId: () => id }),
       ...(pinned === "top" || pinned === "bottom" ? { pinned } : {}),
     })
   }, [])

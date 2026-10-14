@@ -47,7 +47,7 @@ columnMenu ·
 columnControl · pagination · selection · onSelectionChange(ids, rows) · export · density ·
 densityControl · responsive("scroll"|"cards") · stickyHeader · maxHeight ·
 rowHeight("fixed"|"auto"|number) · types · format ·
-rowHref(row) · onRowClick(row, event) · rowClassName(row, index, info) · detail · getParentId(row) ·
+rowHref(row) · onRowClick(row, event) · onRowContextMenu(row, event, info) · rowClassName(row, index, info) · detail · getParentId(row) ·
 pinnedRows({ top, bottom }) · rowReorder({ canDrag, onReorder }) ·
 cellNavigation ·
 onCellEdit(edit) · editTrigger("click"|"doubleClick") · emptyState · emptyMessage ·
@@ -318,6 +318,19 @@ Only offered while unsorted (handles aria-disabled under a sort). Children move 
 handle. The table never mutates data; a returned Promise shows the new order until it settles
 (reverts on rejection). Touch: long-press the handle to drag; scrolling is never blocked before
 that. In code: moveRowTo, stepRow, applyRowMove, canReorderRows, startRowDrag.
+
+## Context menu
+
+    onRowContextMenu={(row, event, { rowId, columnKey, column, text, rowText, pinned }) => {
+      event.preventDefault()          // the browser's menu opens too unless you prevent it
+      openMyMenu(event.clientX, event.clientY)
+    }}
+
+columnKey/column: the cell under the pointer (null over the checkbox/expander/handle columns).
+text: what that cell shows (cellDisplayText; "" for empty). rowText: the row exactly as the table's
+"Copy to clipboard" writes it (tab-separated export values, no header) — use for "Copy row".
+cellDisplayText(row, column, { types, format }) and toDelimitedText are exported. Vue:
+@row-context-menu.
 
 onRowClick (and toggleOnRowClick) ignore clicks on controls inside the row: a[href], button,
 input, select, textarea, label, [role=menu*], [role=button] and the like, or anything with

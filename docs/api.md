@@ -84,6 +84,7 @@ import { Table } from "@trapezium/react"
 | `types` | `Record<string, TypeDef>` | Custom types, merged over the built-ins. |
 | `format` | `Partial<FormatContext>` | Locale, timezone, currency, empty text. |
 | `rowHref` | `(row) => string` | Makes the leading cell a link. |
+| `onRowContextMenu` | `(row, event, info) => void` | A context menu on a row. `info` is `{ rowId, columnKey, column, text, rowText, pinned? }`: the cell under the pointer (`null` over the table's own columns), the text it shows, and the row as the table's copy writes it. Call `event.preventDefault()` to keep the browser's menu closed. `@row-context-menu` in Vue. |
 | `onRowClick` | `(row, event) => void` | A click anywhere in the row except on a control inside it — a link, button, input, select, label, menu, or anything marked `data-tpz-interactive`. |
 | `rowClassName` | `(row, index, info?) => string \| undefined` | With child rows, `info` is the row's `RowInfo` — `{ depth, parentId, childCount, context }`. |
 | `pinnedRows` | `{ top?: TRow[], bottom?: TRow[] }` | Rows held at the top or bottom, outside the data — a "new entry" row, a totals row. Same columns, renderers and editors; kept in view; never filtered, sorted, paged, counted, selected or exported. An edit of one carries `pinned`. See [rows](rows.md#pinned-rows). |
@@ -285,7 +286,7 @@ The text operators — `contains`, `notContains`, `startsWith`, `endsWith` — a
 
 A CSV is read by a spreadsheet, not by a person looking at a page, so money and numbers are written as numbers and dates as ISO — a column of amounts adds up, a column of dates sorts. Labels stay readable: a `select` exports "Professional", not "pro". Override per column with `exportValue`, or per type with `TypeDef.exportValue`.
 
-`toCsv(rows, options)` · `toDelimitedText` · `exportCell` · `downloadText(text, filename, mimeType?)` · `copyText(text)`
+`toCsv(rows, options)` · `toDelimitedText` · `exportCell` · `cellDisplayText(row, column, { types, format, rowId?, rowIndex? })` — the text a cell shows, `""` when empty · `downloadText(text, filename, mimeType?)` · `copyText(text)`
 
 ### Effects
 

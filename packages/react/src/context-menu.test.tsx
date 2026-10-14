@@ -31,6 +31,8 @@ describe("onRowContextMenu", () => {
     expect(event.type).toBe("contextmenu")
     expect(info).toMatchObject({ rowId: "a", columnKey: "due", text: "Jan 15, 2026" })
     expect(info.column.key).toBe("due")
+    // The row as the table's own copy writes it: values a spreadsheet can add up, tab-separated.
+    expect(info.rowText).toBe("INV-1\t1240\t2026-01-15")
 
     fireEvent.contextMenu(screen.getByText("A$80.00"))
     expect(onRowContextMenu.mock.calls[1]?.[2]).toMatchObject({ rowId: "b", columnKey: "amount", text: "A$80.00" })

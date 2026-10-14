@@ -160,3 +160,45 @@ Decide on the server and pass fewer columns. The table renders what it is given;
 ```tsx
 const columns = [...base, ...(canSeeBilling ? billingColumns : [])]
 ```
+
+## A right-click menu with "Copy cell" and "Copy row"
+
+`onRowContextMenu` hands over the row and the cell under the pointer, so a menu of your own needs nothing from the DOM: `info.text` is the text that cell shows (`cellDisplayText`), and `info.rowText` is the row exactly as the table's own "Copy to clipboard" writes it — tab-separated values a spreadsheet can add up.
+
+```tsx
+import { useState } from "react"
+import { Table, copyText, type RowContextMenuInfo } from "@trapezium/react"
+
+type Invoice = { id: string; reference: string; amount: number }
+type Menu = { x: number; y: number; info: RowContextMenuInfo<Invoice> }
+
+export function Invoices({ rows }: { rows: Invoice[] }) {
+  const [menu, setMenu] = useState<Menu | null>(null)
+
+  return (
+    <>
+      <Table
+        data={rows}
+        onRowContextMenu={(_row, event, info) => {
+          event.preventDefault()
+          setMenu({ x: event.clientX, y: event.clientY, info })
+        }}
+      />
+      {menu && (
+        <div role="menu" className="my-menu" style={{ position: "fixed", left: menu.x, top: menu.y }} onMouseLeave={() => setMenu(null)}>
+          {menu.info.text !== null && (
+            <button role="menuitem" onClick={() => void copyText(menu.info.text ?? "")}>
+              Copy {menu.info.column?.header}
+            </button>
+          )}
+          <button role="menuitem" onClick={() => void copyText(menu.info.rowText)}>
+            Copy row
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+```
+
+`info.columnKey` is `null` over the table's own columns (the checkbox, the expander, the drag handle), and `info.pinned` says when the row is a pinned one. The browser's menu opens as well unless the handler calls `event.preventDefault()`.

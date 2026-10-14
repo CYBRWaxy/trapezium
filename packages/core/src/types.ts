@@ -300,6 +300,12 @@ export type RowContextMenuInfo<TRow = AnyRow, TNode = unknown> = {
   column: ResolvedColumn<TRow, TNode> | undefined
   /** The text that cell shows — `cellDisplayText` — or `null` when no column is under the pointer. */
   text: string | null
+  /**
+   * The whole row as the table's own "Copy to clipboard" writes it: every
+   * column on screen that exports, tab-separated, no header — so a "Copy row"
+   * item pastes into a spreadsheet exactly as the table's copy does.
+   */
+  rowText: string
   /** Set when the row is one of `pinnedRows`. */
   pinned?: "top" | "bottom"
 }
