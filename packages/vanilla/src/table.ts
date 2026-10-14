@@ -9,6 +9,16 @@ import {
   defaultTypeRegistry,
   distinctValues,
   downloadText,
+  editValuesEqual,
+  editorKind,
+  editorOptions,
+  editorStep,
+  fromEditorText,
+  hasEditableColumns,
+  isCellEditable,
+  toEditorText,
+  typedCharacter,
+  validateEdit,
   entryCell,
   expandableIds,
   focusCell,
@@ -70,6 +80,7 @@ import {
   toSelectOptions,
   type AnyRow,
   type CellContext,
+  type CellEdit,
   type ColumnDef,
   type ColumnFilter,
   type Density,
@@ -95,6 +106,7 @@ import {
 
 import { currentDocument, el, fill, fragment, icon, text } from "./dom.js"
 import { closeMenu, menuItem, menuLabel, menuLink, menuSeparator, openMenuAt } from "./menu.js"
+import { buildComboboxEditor, buildInputEditor, type CommitReason, type EditorHandle } from "./editor.js"
 
 /**
  * The table, in plain DOM.
@@ -240,6 +252,21 @@ export type TableOptions<TRow extends AnyRow = AnyRow> = {
    * because it makes the table a `role="grid"`; on when a column is editable.
    */
   cellNavigation?: boolean
+
+  /**
+   * Receives every committed edit of an `editable` column. The table never
+   * changes `data`: update your rows with `edit.value` and call `setData`.
+   * Return a promise and the cell shows that it is saving until it settles;
+   * if it rejects, the cell goes back to what the data says and is marked as
+   * having failed.
+   */
+  onCellEdit?: (edit: CellEdit<TRow>) => void | Promise<unknown>
+
+  /**
+   * What opens an editable cell with the mouse: a double click (the default)
+   * or a single click. Enter, F2 and typing open it from the keyboard either way.
+   */
+  editTrigger?: "click" | "doubleClick"
 
   /** Replaces the "nothing here" state. */
   emptyState?: Node | string
@@ -395,6 +422,13 @@ export function createTable<TRow extends AnyRow>(
   let appliedFocus: string | undefined
   /** A rebuild took the focus out of the document with the rows it was in. */
   let restoreFocus = false
+  /** Whether the columns last rendered include an editable one. */
+  let renderedEditable = false
+  /** The cell being edited, if one is. Never on a server: an editor is opened by a person. */
+  let editing: { rowId: string; key: string; editor: EditorHandle } | undefined
+  /** Edits still being saved, with the value each is saving, and the ones that failed, with why. */
+  const pendingEdits = new Map<string, unknown>()
+  const failedEdits = new Map<string, string>()
 
   const root = el("div", { class: "tpz" })
   const frame = el("div", { class: "tpz-frame" })
@@ -798,7 +832,8 @@ export function createTable<TRow extends AnyRow>(
 
   /** Whether the keyboard moves between cells. */
   function navigable(): boolean {
-    return settings.cellNavigation === true
+    // Editing needs the keyboard to reach cells, so editable columns switch it on unless told otherwise.
+    return settings.cellNavigation ?? renderedEditable
   }
 
   /**
@@ -823,6 +858,7 @@ export function createTable<TRow extends AnyRow>(
 
   function renderView(reveal: string | undefined): boolean {
     const { columns, hidden, rows, total, pageCount, filtered, pagination, page } = current(reveal)
+    renderedEditable = hasEditableColumns(columns)
 
     // The page shown is the revealed row's, so the state says so from here on.
     const revealed = pagination !== undefined && page !== state.page
@@ -882,7 +918,7 @@ export function createTable<TRow extends AnyRow>(
 
     if (navigable()) {
       table.setAttribute("role", "grid")
-      table.setAttribute("aria-readonly", "true")
+      table.setAttribute("aria-readonly", renderedEditable ? "false" : "true")
     } else {
       table.removeAttribute("role")
       table.removeAttribute("aria-readonly")
@@ -1046,6 +1082,9 @@ export function createTable<TRow extends AnyRow>(
 
     // The rows are about to be replaced; if the focus is in one, it goes back to the active cell after.
     if (body.contains(currentDocument().activeElement)) restoreFocus = true
+    // An editor open in a row being replaced is opened again in the new one, with what was typed.
+    const reopen = editing ? { rowId: editing.rowId, key: editing.key, text: editing.editor.text() } : undefined
+    if (editing) closeEditor()
     fill(body, rendered)
 
     renderedRows = rows
@@ -1059,6 +1098,10 @@ export function createTable<TRow extends AnyRow>(
 
     applyPinOffsets()
     renderPagination(pagination, total, pageCount, rows.length)
+    if (reopen) {
+      restoreFocus = false
+      startEdit(reopen.rowId, reopen.key, reopen.text)
+    }
     void hidden
     return revealed
   }
@@ -1182,9 +1225,10 @@ export function createTable<TRow extends AnyRow>(
       tr.append(cell)
     }
 
+    const editable = hasEditableColumns(columns)
+
     columns.forEach((column, columnIndex) => {
-      const context = cellContext(row, id, index, column, types, format)
-      const content = renderCell(context, settings)
+      const cellEditable = editable && isCellEditable(column, row)
       const cell = el("td", {
         class: cls("cell", column.className),
         "data-align": column.align,
@@ -1195,42 +1239,285 @@ export function createTable<TRow extends AnyRow>(
         "data-key": column.key,
         "data-label": column.header,
         tabindex: tabindex(column.key),
+        "data-editable": cellEditable ? "true" : undefined,
+        "aria-readonly": editable && !cellEditable ? "true" : undefined,
       })
       if (column.width) cell.style.width = `${String(column.width)}px`
 
-      const node = typeof content === "string" ? text(content) : content
-
-      /*
-        A table cell has to go on being a table cell, so anything that bounds
-        its content needs an element of its own inside it: `-webkit-box` for a
-        line clamp, and a plain block for an exact row height, whose cap
-        `height` alone cannot enforce.
-      */
-      let host: Node = cell
-      if (typeof column.wrap === "number") {
-        const clamp = el("span", { class: "tpz-clamp" })
-        clamp.style.setProperty("--tpz-cell-lines", String(column.wrap))
-        cell.append(clamp)
-        host = clamp
-      } else if (typeof settings.rowHeight === "number") {
-        const fit = el("span", { class: "tpz-fit" })
-        cell.append(fit)
-        host = fit
-      }
-
-      if (columnIndex === 0 && settings.rowHref) {
-        const link = el("a", { class: "tpz-link tpz-lead", href: settings.rowHref(row) })
-        link.append(node)
-        host.appendChild(link)
-      } else {
-        host.appendChild(node)
-      }
-
+      fillCell(cell, row, id, index, column, columnIndex, build)
       tr.append(cell)
     })
 
     return tr
   }
+
+  /** The key a cell's pending or failed edit is kept under. */
+  function editId(rowId: string, key: string): string {
+    return `${rowId}\u0000${key}`
+  }
+
+  /**
+   * Puts a cell's content in it: the value — or the one being saved, while an
+   * edit is — formatted and rendered, inside whatever bounds the cell.
+   * Separate from building the cell so one cell can be redrawn on its own
+   * when its edit closes, saves or fails.
+   */
+  function fillCell(
+    cell: HTMLElement,
+    row: TRow,
+    id: string,
+    index: number,
+    column: ResolvedColumn<TRow, Node | string>,
+    columnIndex: number,
+    build: Pick<RowBuild, "types" | "format">,
+  ) {
+    const editKey = editId(id, column.key)
+    const pending = pendingEdits.has(editKey)
+    const failed = failedEdits.get(editKey)
+
+    const context = cellContext(row, id, index, column, build.types, build.format, pending ? { value: pendingEdits.get(editKey) } : undefined)
+    const content = renderCell(context, settings)
+    const node = typeof content === "string" ? text(content) : content
+
+    cell.replaceChildren()
+    delete cell.dataset["editing"]
+    if (pending) {
+      cell.dataset["pending"] = "true"
+      cell.setAttribute("aria-busy", "true")
+    } else {
+      delete cell.dataset["pending"]
+      cell.removeAttribute("aria-busy")
+    }
+    if (failed !== undefined) {
+      cell.dataset["failed"] = "true"
+      cell.setAttribute("title", failed)
+    } else {
+      delete cell.dataset["failed"]
+      cell.removeAttribute("title")
+    }
+
+    /*
+      A table cell has to go on being a table cell, so anything that bounds
+      its content needs an element of its own inside it: `-webkit-box` for a
+      line clamp, and a plain block for an exact row height, whose cap
+      `height` alone cannot enforce.
+    */
+    let host: Node = cell
+    if (typeof column.wrap === "number") {
+      const clamp = el("span", { class: "tpz-clamp" })
+      clamp.style.setProperty("--tpz-cell-lines", String(column.wrap))
+      cell.append(clamp)
+      host = clamp
+    } else if (typeof settings.rowHeight === "number") {
+      const fit = el("span", { class: "tpz-fit" })
+      cell.append(fit)
+      host = fit
+    }
+
+    if (columnIndex === 0 && settings.rowHref) {
+      const link = el("a", { class: "tpz-link tpz-lead", href: settings.rowHref(row) })
+      link.append(node)
+      host.appendChild(link)
+    } else {
+      host.appendChild(node)
+    }
+
+    if (failed !== undefined) cell.append(el("span", { class: "tpz-sr", text: `, not saved: ${failed}` }))
+  }
+
+  /** Redraws one cell where it is, if it is on screen. */
+  function refillCell(rowId: string, key: string) {
+    const index = renderedIds.indexOf(rowId)
+    const row = renderedRows[index]
+    const column = headerColumns.find((entry) => entry.key === key)
+    const cell = cellElement(rowId, key)
+    if (row === undefined || !column || !cell) return
+    fillCell(cell, row, rowId, index, column, headerColumns.indexOf(column), { types: registry(), format: formatting() })
+  }
+
+  /* ── Editing ───────────────────────────────────────────────────────────── */
+
+  /** Opens a cell's editor, if the cell can be edited. `seed` replaces the value, as typing does. */
+  function startEdit(rowId: string, key: string, seed?: string): boolean {
+    const index = renderedIds.indexOf(rowId)
+    const row = renderedRows[index]
+    const column = headerColumns.find((entry) => entry.key === key)
+    const cell = cellElement(rowId, key)
+    if (row === undefined || !column || !cell || !isCellEditable(column, row)) return false
+
+    const types = registry()
+    const format = formatting()
+    const kind = editorKind(column, types)
+    if (kind === "none") return false
+
+    if (editing) closeEditor()
+    if (failedEdits.delete(editId(rowId, key))) refillCell(rowId, key)
+
+    const value = column.accessor(row)
+    const label = `Edit ${column.header}`
+    const id = `${settings.id ?? "tpz"}-edit-${encodeURIComponent(rowId)}-${encodeURIComponent(key)}`
+    const callbacks = {
+      onCommit: (input: string, reason: CommitReason) => finishEdit({ text: input }, reason),
+      onCancel: cancelEdit,
+    }
+
+    let editor: EditorHandle
+    if (kind === "custom" && column.renderEditor) {
+      const host = el("div", { class: "tpz-editor", "data-kind": "custom" })
+      const content = column.renderEditor({
+        value,
+        initialText: seed ?? "",
+        row,
+        rowId,
+        column,
+        commit: (next) => finishEdit({ value: next }, "custom"),
+        cancel: cancelEdit,
+      })
+      if (content !== undefined && content !== null) host.append(typeof content === "string" ? text(content) : content)
+      editor = { element: host, focus: () => undefined, text: () => seed ?? "", setError: () => undefined, dispose: () => undefined }
+    } else if (kind === "select" || kind === "boolean") {
+      editor = buildComboboxEditor({
+        kind,
+        choices: editorOptions(column, kind, format),
+        current: toEditorText(value, kind, column, format),
+        seed,
+        label,
+        theme: settings.theme,
+        id,
+        ...callbacks,
+      })
+    } else {
+      editor = buildInputEditor({
+        kind,
+        initial: seed ?? toEditorText(value, kind, column, format),
+        seeded: seed !== undefined,
+        step: kind === "number" ? editorStep(column) : undefined,
+        label,
+        theme: settings.theme,
+        id,
+        ...callbacks,
+      })
+    }
+
+    editing = { rowId, key, editor }
+    cell.dataset["editing"] = "true"
+    cell.replaceChildren(editor.element)
+    editor.focus()
+    return true
+  }
+
+  /** Takes the editor out of its cell and puts the cell's content back. */
+  function closeEditor() {
+    const open = editing
+    if (!open) return
+    editing = undefined
+    open.editor.dispose()
+    refillCell(open.rowId, open.key)
+  }
+
+  function cancelEdit() {
+    const open = editing
+    if (!open) return
+    closeEditor()
+    cellElement(open.rowId, open.key)?.focus({ preventScroll: true })
+  }
+
+  /** The next editable cell after this one, or before it, in reading order across the page. */
+  function nextEditable(rowId: string, key: string, backwards: boolean): { rowId: string; key: string } | undefined {
+    const cells: Array<{ rowId: string; key: string; row: TRow; column: ResolvedColumn<TRow, Node | string> }> = []
+    renderedIds.forEach((id, index) => {
+      const row = renderedRows[index]
+      if (row === undefined) return
+      for (const column of headerColumns) cells.push({ rowId: id, key: column.key, row, column })
+    })
+    if (backwards) cells.reverse()
+
+    const from = cells.findIndex((cell) => cell.rowId === rowId && cell.key === key)
+    const types = registry()
+    return cells
+      .slice(from + 1)
+      .find((cell) => isCellEditable(cell.column, cell.row) && editorKind(cell.column, types) !== "none")
+  }
+
+  function finishEdit(input: { text: string } | { value: unknown }, reason: CommitReason) {
+    const open = editing
+    if (!open) return
+    const index = renderedIds.indexOf(open.rowId)
+    const row = renderedRows[index]
+    const column = headerColumns.find((entry) => entry.key === open.key)
+    if (row === undefined || !column) {
+      closeEditor()
+      return
+    }
+
+    const previous = column.accessor(row)
+    let value = "text" in input ? fromEditorText(input.text, editorKind(column, registry()), column, previous, formatting()) : input.value
+    if (column.parse) value = column.parse(value, row)
+
+    // Refused: the editor stays open, marked, with the reason beside it. Leaving the cell changes nothing.
+    const error = validateEdit(column, value, row)
+    if (error !== undefined) {
+      if (reason === "blur") closeEditor()
+      else open.editor.setError(error)
+      return
+    }
+
+    const { rowId, key } = open
+    const changed = !editValuesEqual(value, previous)
+    if (changed && settings.onCellEdit) pendingEdits.set(editId(rowId, key), value)
+    closeEditor()
+
+    if (changed) {
+      const result = settings.onCellEdit?.({ rowId, row, key, value, previousValue: previous })
+      if (isPromiseLike(result)) {
+        refillCell(rowId, key)
+        result.then(
+          () => {
+            pendingEdits.delete(editId(rowId, key))
+            refillCell(rowId, key)
+          },
+          (failure: unknown) => {
+            pendingEdits.delete(editId(rowId, key))
+            failedEdits.set(editId(rowId, key), failure instanceof Error && failure.message ? failure.message : "Could not save")
+            refillCell(rowId, key)
+          },
+        )
+      } else if (pendingEdits.delete(editId(rowId, key))) {
+        // Nothing to wait for: the cell shows what the data says now.
+        refillCell(rowId, key)
+      }
+    }
+
+    // Tab carries on editing in the next editable cell, as a spreadsheet does.
+    if (reason === "tab" || reason === "shift-tab") {
+      const next = nextEditable(rowId, key, reason === "shift-tab")
+      if (next && startEdit(next.rowId, next.key)) {
+        const focused = focusCell(state, next.rowId, next.key)
+        if (focused !== state) update(focused)
+        return
+      }
+    }
+
+    if (reason !== "blur") cellElement(rowId, key)?.focus({ preventScroll: true })
+  }
+
+  function onEditPointer(event: MouseEvent) {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const cell = target.closest<HTMLElement>('td[data-editable="true"]')
+    if (!cell || !body.contains(cell) || cell.dataset["editing"] === "true") return
+    if (isInteractiveTarget(target, cell)) return
+    const rowId = cell.parentElement?.dataset["rowId"]
+    const key = cell.dataset["key"]
+    if (rowId !== undefined && key !== undefined) startEdit(rowId, key)
+  }
+
+  table.addEventListener("dblclick", (event) => {
+    if (settings.editTrigger !== "click") onEditPointer(event)
+  })
+  table.addEventListener("click", (event) => {
+    if (settings.editTrigger === "click") onEditPointer(event)
+  })
 
   /**
    * True when the rows to show start with exactly the rows already on screen.
@@ -1318,7 +1605,8 @@ export function createTable<TRow extends AnyRow>(
         ? renderedEntry
         : undefined
       : cellElement(focus.rowId, undefined)
-    if (!target || currentDocument().activeElement === target) return
+    // Already there — or inside it, in the editor that cell has just opened.
+    if (!target || target.contains(currentDocument().activeElement)) return
 
     if (typeof target.scrollIntoView === "function") {
       target.scrollIntoView({ block: focus.align ?? "nearest", inline: "nearest" })
@@ -1358,6 +1646,22 @@ export function createTable<TRow extends AnyRow>(
     const rowId = cell.parentElement?.dataset["rowId"]
     const key = cell.dataset["key"]
     if (rowId === undefined || key === undefined) return
+
+    // An editable cell opens its editor on Enter or F2, and on typing — seeded with what was typed.
+    if (cell.dataset["editable"] === "true") {
+      const typed = typedCharacter(event)
+      const seed =
+        event.key === "Enter" || event.key === "F2"
+          ? null
+          : event.key === "Backspace" || event.key === "Delete"
+            ? ""
+            : typed
+      if (seed !== undefined) {
+        event.preventDefault()
+        startEdit(rowId, key, seed ?? undefined)
+        return
+      }
+    }
 
     if (isNavigationKey(event.key) && !event.altKey && !event.shiftKey) {
       const next = nextCell({ rows: renderedIds, columns: navColumns }, { rowId, key }, event.key, {
@@ -1529,6 +1833,7 @@ export function createTable<TRow extends AnyRow>(
       appendRow: Boolean(settings.appendRow),
       detail: Boolean(settings.detail),
       navigable: navigable(),
+      editable: renderedEditable,
       href: Boolean(settings.rowHref),
       click: Boolean(settings.onRowClick),
       rowClass: Boolean(settings.rowClassName),
@@ -3271,6 +3576,10 @@ export function createTable<TRow extends AnyRow>(
       if (render()) notify()
     },
     destroy() {
+      if (editing) {
+        editing.editor.dispose()
+        editing = undefined
+      }
       observer?.disconnect()
       clearTimeout(searchTimer)
       clearTimeout(headerSearch?.timer)
@@ -3386,6 +3695,11 @@ function pageRowsFrom(cell: HTMLElement): number {
   return Math.max(1, Math.floor(height / rowHeight) - 1)
 }
 
+/** Whether a handler returned something to wait for. */
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return typeof value === "object" && value !== null && "then" in value && typeof value.then === "function"
+}
+
 /** The keys whose value is not the one already held, compared by identity. */
 function changedKeys<T extends object>(next: Partial<T>, previous: T): string[] {
   const keys: string[] = []
@@ -3441,8 +3755,10 @@ function cellContext<TRow extends AnyRow>(
   column: ResolvedColumn<TRow, Node | string>,
   types: ReturnType<typeof createTypeRegistry>,
   format: FormatContext,
+  /** Stands in for the row's own value — an edit still being saved shows what it is saving. */
+  shown?: { value: unknown },
 ): CellContext<TRow, Node | string> {
-  const value = column.accessor(row)
+  const value = shown ? shown.value : column.accessor(row)
   const context: CellContext<TRow, Node | string> = {
     value,
     row,

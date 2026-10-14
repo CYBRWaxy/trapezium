@@ -88,11 +88,13 @@ export {
 export type {
   Align,
   AnyRow,
+  CellEdit,
   CellFocus,
   ColumnFilter,
   Density,
   DetailContext,
   DetailOptions,
+  EditorContext,
   FilterKind,
   FilterOperator,
   FilterOption,

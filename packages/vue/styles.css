@@ -871,6 +871,107 @@
   opacity: 0.45;
 }
 
+/* ── Editing ───────────────────────────────────────────────────────────── */
+
+/* A cell that can be edited says so on hover, the way a text box does. */
+.tpz-td[data-editable="true"] {
+  cursor: text;
+}
+
+/*
+  The cell being edited becomes its editor: the box fills the cell exactly, so
+  opening it moves nothing, and the ring is drawn inside the cell for the same
+  reason the active cell's is.
+*/
+.tpz-td[data-editing="true"] {
+  padding: 0;
+  overflow: visible;
+}
+
+.tpz-editor {
+  display: flex;
+  height: var(--tpz-cell-content-height);
+  min-width: 0;
+  align-items: stretch;
+}
+
+.tpz-editor-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--tpz-surface);
+  padding: 0 var(--tpz-cell-padding-x);
+  outline: 2px solid var(--tpz-focus-ring);
+  outline-offset: -2px;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+}
+
+.tpz-editor-input[aria-invalid="true"] {
+  outline-color: var(--tpz-danger);
+}
+
+/* The choices of a list editor, drawn outside the table like a menu. */
+.tpz-editor-list {
+  max-height: 15rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.tpz-editor-option {
+  border-radius: var(--tpz-radius-sm);
+  padding: 0.3125rem 0.5rem;
+  cursor: pointer;
+}
+
+.tpz-editor-option[aria-selected="true"] {
+  background: var(--tpz-accent);
+}
+
+.tpz-editor-option[data-current="true"] {
+  font-weight: 600;
+}
+
+.tpz-editor-error {
+  max-width: 20rem;
+  border: 1px solid color-mix(in oklab, var(--tpz-danger) 45%, var(--tpz-border));
+  border-radius: var(--tpz-radius-md);
+  background: var(--tpz-surface);
+  padding: 0.3125rem 0.5rem;
+  box-shadow: 0 8px 24px -12px rgb(0 0 0 / 35%);
+  color: var(--tpz-danger);
+  font-family: var(--tpz-font-sans);
+  font-size: var(--tpz-text-ui);
+}
+
+/* Saving: the new value, quieter, until the caller says it is kept. */
+.tpz-td[data-pending="true"] {
+  color: var(--tpz-muted-fg);
+  background-image: linear-gradient(90deg, transparent, color-mix(in oklab, var(--tpz-primary) 10%, transparent), transparent);
+  background-size: 200% 100%;
+  animation: tpz-saving 1.2s linear infinite;
+}
+
+@keyframes tpz-saving {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* Not saved: the old value is back, with a mark at the edge and the reason on hover. */
+.tpz-td[data-failed="true"] {
+  box-shadow: inset 2px 0 0 var(--tpz-danger);
+}
+
 /* ── Detail rows ───────────────────────────────────────────────────────── */
 
 /* The expander column is the selection column's twin: narrow, frozen, centred. */

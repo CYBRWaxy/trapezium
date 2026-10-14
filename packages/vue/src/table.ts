@@ -20,6 +20,8 @@ import { treeToVNode } from "./vnodes.js"
 import type {
   AnyRow,
   CellContext,
+  CellEdit,
+  EditorContext,
   ColumnDef,
   Density,
   DetailContext,
@@ -53,8 +55,10 @@ import type {
  * reactive like any other template.
  */
 
-export type VueColumn<TRow extends AnyRow = AnyRow> = Omit<ColumnDef<TRow, unknown>, "render" | "renderHeader"> & {
+export type VueColumn<TRow extends AnyRow = AnyRow> = Omit<ColumnDef<TRow, unknown>, "render" | "renderHeader" | "renderEditor"> & {
   render?: (context: CellContext<TRow, unknown>) => VNode | Node | string
+  /** Your own editor for the column's cells — a VNode, so it can be a real component. */
+  renderEditor?: (context: EditorContext<TRow, unknown>) => VNode | Node | string
 }
 
 /** Detail rows, with a renderer that may return a VNode — a real component, below its row. */
@@ -152,7 +156,16 @@ export const Table = defineComponent({
      * Page keys. The active cell is `state.focus`, so setting it from outside
      * scrolls there and puts the keyboard on it. Makes the table a grid.
      */
-    cellNavigation: { type: Boolean, default: undefined },
+    cellNavigation: { type: Boolean as PropType<boolean | undefined>, default: undefined },
+    /**
+     * Receives every committed edit of an `editable` column — `@cell-edit`.
+     * A prop rather than an event so it can return a promise: the cell shows
+     * that it is saving until it settles, and goes back if it rejects. Update
+     * your data with `edit.value`.
+     */
+    onCellEdit: { type: Function as PropType<(edit: CellEdit<AnyRow>) => void | Promise<unknown>>, default: undefined },
+    /** What opens an editable cell with the mouse: `"doubleClick"` (the default) or `"click"`. */
+    editTrigger: { type: String as PropType<"click" | "doubleClick">, default: undefined },
     rowClassName: { type: Function as PropType<(row: AnyRow, index: number) => string | undefined>, default: undefined },
     emptyMessage: { type: String, default: undefined },
 
@@ -267,22 +280,24 @@ export const Table = defineComponent({
     }
 
     /** Wraps the caller's renderers so a VNode becomes a real DOM node. */
+    /** A VNode as a DOM node the renderer can place, kept track of so it can be unmounted. */
+    const toNode = (result: VNode | Node | string): Node | string => {
+      if (!isVNode(result)) return result
+      const container = document.createElement("span")
+      renderVNode(result, container)
+      mounted.push(container)
+      return container
+    }
+
     const adaptColumns = () =>
       props.columns?.map((column) => {
-        if (typeof column === "string" || !column.render) return column
-        const render = column.render
+        if (typeof column === "string" || (!column.render && !column.renderEditor)) return column
+        const { render, renderEditor } = column
 
         return {
           ...column,
-          render: (context: CellContext<AnyRow, unknown>) => {
-            const result = render(context)
-            if (!isVNode(result)) return result
-
-            const container = document.createElement("span")
-            renderVNode(result, container)
-            mounted.push(container)
-            return container
-          },
+          render: render ? (context: CellContext<AnyRow, unknown>) => toNode(render(context)) : undefined,
+          renderEditor: renderEditor ? (context: EditorContext<AnyRow, unknown>) => toNode(renderEditor(context)) : undefined,
         }
       })
 
@@ -346,6 +361,8 @@ export const Table = defineComponent({
       rowHref: props.rowHref,
       detail: adaptedDetail.value,
       cellNavigation: props.cellNavigation,
+      onCellEdit: props.onCellEdit,
+      editTrigger: props.editTrigger,
       id: props.id,
       rowClassName: props.rowClassName,
       emptyMessage: props.emptyMessage,
