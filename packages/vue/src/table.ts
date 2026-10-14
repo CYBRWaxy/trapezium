@@ -26,6 +26,7 @@ import type {
   Density,
   DetailContext,
   DetailOptions,
+  HeaderContext,
   FormatContext,
   PaginationOptions,
   PartialTableState,
@@ -63,6 +64,8 @@ export type VueColumn<TRow extends AnyRow = AnyRow> = Omit<ColumnDef<TRow, unkno
   render?: (context: CellContext<TRow, unknown>) => VNode | Node | string
   /** Your own editor for the column's cells — a VNode, so it can be a real component. */
   renderEditor?: (context: EditorContext<TRow, unknown>) => VNode | Node | string
+  /** The header's text, drawn your way — a VNode, inside the sort control, so phrasing content only. */
+  renderHeader?: (context: HeaderContext<TRow, unknown>) => VNode | Node | string
 }
 
 /** Detail rows, with a renderer that may return a VNode — a real component, below its row. */
@@ -323,13 +326,14 @@ export const Table = defineComponent({
 
     const adaptColumns = () =>
       props.columns?.map((column) => {
-        if (typeof column === "string" || (!column.render && !column.renderEditor)) return column
-        const { render, renderEditor } = column
+        if (typeof column === "string" || (!column.render && !column.renderEditor && !column.renderHeader)) return column
+        const { render, renderEditor, renderHeader } = column
 
         return {
           ...column,
           render: render ? (context: CellContext<AnyRow, unknown>) => toNode(render(context)) : undefined,
           renderEditor: renderEditor ? (context: EditorContext<AnyRow, unknown>) => toNode(renderEditor(context)) : undefined,
+          renderHeader: renderHeader ? (context: HeaderContext<AnyRow, unknown>) => toNode(renderHeader(context)) : undefined,
         }
       })
 
@@ -437,17 +441,30 @@ export const Table = defineComponent({
       renderToTree(() => ({
         ...options(),
         columns: props.columns?.map((column) => {
-          if (typeof column === "string" || !column.render) return column
-          const render = column.render
+          if (typeof column === "string" || (!column.render && !column.renderHeader)) return column
+          const { render, renderHeader } = column
+          /** A VNode as a marker in the server tree, to be filled with it when the tree becomes VNodes. */
+          const mark = (result: VNode) => {
+            const key = String(cellVNodes.size)
+            cellVNodes.set(key, result)
+            return el("span", { "data-tpz-vnode": key })
+          }
           return {
             ...column,
-            render: (context: CellContext<AnyRow, unknown>) => {
-              const result = render(context)
-              if (!isVNode(result)) return typeof result === "string" ? result : context.text
-              const key = String(cellVNodes.size)
-              cellVNodes.set(key, result)
-              return el("span", { "data-tpz-vnode": key })
-            },
+            render: render
+              ? (context: CellContext<AnyRow, unknown>) => {
+                  const result = render(context)
+                  if (!isVNode(result)) return typeof result === "string" ? result : context.text
+                  return mark(result)
+                }
+              : undefined,
+            renderHeader: renderHeader
+              ? (context: HeaderContext<AnyRow, unknown>) => {
+                  const result = renderHeader(context)
+                  if (!isVNode(result)) return typeof result === "string" ? result : context.column.header
+                  return mark(result)
+                }
+              : undefined,
           }
         }) as TableOptions["columns"],
         detail: props.detail

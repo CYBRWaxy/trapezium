@@ -126,7 +126,7 @@ import {
 
 import { currentDocument, el, fill, fragment, icon, text } from "./dom.js"
 import { closeMenu, menuItem, menuLabel, menuLink, menuSeparator, openMenuAt } from "./menu.js"
-import { buildComboboxEditor, buildInputEditor, type CommitReason, type EditorHandle } from "./editor.js"
+import { buildComboboxEditor, buildInputEditor, openPopup, type CommitReason, type EditorHandle } from "./editor.js"
 
 /**
  * The table, in plain DOM.
@@ -2821,6 +2821,8 @@ export function createTable<TRow extends AnyRow>(
       settings.resizable !== false && column.resizable !== false,
       settings.reorderable !== false && column.reorderable !== false,
       settings.filters !== false && column.headerSearch,
+      column.description ?? null,
+      Boolean(column.renderHeader),
     ])
   }
 
@@ -2900,12 +2902,28 @@ export function createTable<TRow extends AnyRow>(
     // indicator moves as if a column were coming, but what lands is a URL and
     // the browser opens it. Turning the link's own drag off lets the header
     // be the thing that is dragged.
-    const labelText = el("span", { class: "tpz-th-label", text: column.header })
+    // Filled by `syncHeaderCell`: a header renderer is handed the column's sort, which moves.
+    const labelText = el("span", { class: "tpz-th-label" })
     const link = sortable && settings.buildHref !== undefined
+    const describedBy = column.description ? `${settings.id ?? "tpz"}-desc-${encodeURIComponent(key)}` : undefined
     const label =
       link
-        ? routed(el("a", { href: "", class: "tpz-th-button", "aria-label": "", draggable: "false" }, [labelText]))
-        : el(sortable ? "button" : "span", { class: "tpz-th-button", type: sortable ? "button" : undefined }, [labelText])
+        ? routed(
+            el("a", { href: "", class: "tpz-th-button", "aria-label": "", "aria-describedby": describedBy, draggable: "false" }, [
+              labelText,
+            ]),
+          )
+        : el(
+            sortable ? "button" : "span",
+            {
+              class: "tpz-th-button",
+              type: sortable ? "button" : undefined,
+              // Named for the column, whatever a header renderer draws inside it.
+              "aria-label": sortable && column.renderHeader && column.header ? column.header : undefined,
+              "aria-describedby": sortable ? describedBy : undefined,
+            },
+            [labelText],
+          )
 
     if (sortable) {
       /*
@@ -2971,6 +2989,40 @@ export function createTable<TRow extends AnyRow>(
 
     cell.append(inner)
 
+    /*
+      A column's description: always in the header for a screen reader, linked
+      by `aria-describedby`, and a tooltip beside the header while it is hovered
+      or has the keyboard — for the eye only, since it is already announced.
+    */
+    if (column.description && describedBy) {
+      const text = column.description
+      cell.dataset["described"] = "true"
+      cell.setAttribute("aria-describedby", describedBy)
+      cell.append(el("span", { id: describedBy, class: "tpz-sr", text }))
+
+      let tip: { dispose(): void } | undefined
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const show = (delay: number) => {
+        clearTimeout(timer)
+        timer = setTimeout(() => {
+          if (tip) return
+          tip = openPopup(labelText, el("div", { class: "tpz-tooltip", "aria-hidden": "true", text }), settings.theme)
+        }, delay)
+      }
+      const hide = () => {
+        clearTimeout(timer)
+        tip?.dispose()
+        tip = undefined
+      }
+      cell.addEventListener("mouseenter", () => show(400))
+      cell.addEventListener("mouseleave", hide)
+      cell.addEventListener("focusin", () => show(0))
+      cell.addEventListener("focusout", hide)
+      cell.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") hide()
+      })
+    }
+
     headerParts.set(cell, { signature: headerSignature(column, columns, cls), label, link, search })
     syncHeaderCell(cell, column)
     return cell
@@ -3023,6 +3075,13 @@ export function createTable<TRow extends AnyRow>(
 
     while (parts.label.childNodes.length > 1) parts.label.lastChild?.remove()
     parts.label.append(...marks.filter((mark): mark is Node => mark !== null))
+
+    // The header's text, or what its renderer draws for the sort as it now stands.
+    const labelText = parts.label.firstElementChild
+    if (labelText) {
+      const drawn = column.renderHeader ? column.renderHeader({ column, sort }) : column.header
+      labelText.replaceChildren(typeof drawn === "string" ? text(drawn) : drawn)
+    }
 
     if (parts.link && settings.buildHref) {
       parts.label.setAttribute("href", settings.buildHref(toggleSort(state, key)))

@@ -1,4 +1,4 @@
-import type { AnyRow, CellContext } from "@trapezium/core"
+import type { AnyRow, CellContext, HeaderContext } from "@trapezium/core"
 
 import { withDocument } from "./dom.js"
 import { ServerDocument, ServerElement, ServerNode } from "./server-dom.js"
@@ -63,20 +63,33 @@ function serialisable<TRow extends AnyRow>(options: TableOptions<TRow>): TableOp
   }
 
   copy.columns = options.columns?.map((column) => {
-    if (typeof column === "string" || !column.render) return column
-    const render = column.render
+    if (typeof column === "string" || (!column.render && !column.renderHeader)) return column
+    const { render, renderHeader } = column
     return {
       ...column,
-      render: (context: CellContext<TRow, Node | string>) => {
-        try {
-          const result = render(context)
-          return typeof result === "string" || result instanceof ServerNode ? result : context.text
-        } catch {
-          // Most likely `document` — a renderer written for a browser. The
-          // cell still has its text.
-          return context.text
-        }
-      },
+      render: render
+        ? (context: CellContext<TRow, Node | string>) => {
+            try {
+              const result = render(context)
+              return typeof result === "string" || result instanceof ServerNode ? result : context.text
+            } catch {
+              // Most likely `document` — a renderer written for a browser. The
+              // cell still has its text.
+              return context.text
+            }
+          }
+        : undefined,
+      // A header renderer is made safe the same way: what a server cannot draw is the header's text.
+      renderHeader: renderHeader
+        ? (context: HeaderContext<TRow, Node | string>) => {
+            try {
+              const result = renderHeader(context)
+              return typeof result === "string" || result instanceof ServerNode ? result : context.column.header
+            } catch {
+              return context.column.header
+            }
+          }
+        : undefined,
     }
   })
 
