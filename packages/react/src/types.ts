@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import type {
   AnyRow,
   CellContext,
+  CellEdit,
   ColumnDef,
   Density,
   DetailOptions,
@@ -280,6 +281,24 @@ export type TableProps<TRow extends AnyRow = AnyRow> = {
    * when a column is `editable`, since editing needs it.
    */
   cellNavigation?: boolean
+
+  /**
+   * Receives every committed edit of an `editable` column.
+   *
+   * The table never changes `data`: update your rows with `edit.value` and
+   * the cell shows it. Return a promise and the cell shows that it is saving
+   * until it settles; if it rejects, the cell goes back to what the data says
+   * and is marked as having failed — so an optimistic update and its rollback
+   * stay yours, where the data is.
+   */
+  onCellEdit?: (edit: CellEdit<TRow>) => void | Promise<unknown>
+
+  /**
+   * What opens an editable cell's editor with the mouse: a double click (the
+   * default, so a single click still selects a cell and its text) or a single
+   * click. Enter, F2 and typing open it from the keyboard either way.
+   */
+  editTrigger?: "click" | "doubleClick"
 
   /** Makes each row a link. The leading cell becomes an anchor. */
   rowHref?: (row: TRow) => string

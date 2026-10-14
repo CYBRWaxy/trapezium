@@ -124,7 +124,12 @@ export function renderCell<TRow extends AnyRow>(
   }
 }
 
-/** The text a cell shows, before any React node wraps it. */
+/**
+ * The text a cell shows, before any React node wraps it.
+ *
+ * `shown` stands in for the row's own value — an edit that is still being
+ * saved shows the value it is saving, not the one it is replacing.
+ */
 export function cellText<TRow extends AnyRow>(
   row: TRow,
   rowId: string,
@@ -132,8 +137,9 @@ export function cellText<TRow extends AnyRow>(
   column: TableColumn<TRow>,
   types: TypeRegistry,
   format: TableCellContext<TRow>["format"],
+  shown?: { value: unknown },
 ): TableCellContext<TRow> {
-  const value = column.accessor(row)
+  const value = shown ? shown.value : column.accessor(row)
   const options = { ...format, ...column.formatOptions }
 
   const context: TableCellContext<TRow> = {

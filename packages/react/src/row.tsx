@@ -1,5 +1,5 @@
-import { memo } from "react"
-import { isInteractiveTarget, type AnyRow, type FormatContext, type TypeRegistry } from "@trapezium/core"
+import { memo, type ReactNode } from "react"
+import { isCellEditable, isInteractiveTarget, type AnyRow, type FormatContext, type TypeRegistry } from "@trapezium/core"
 
 import { cellText, renderCell } from "./cell.js"
 import type { ClassResolver } from "./classes.js"
@@ -67,6 +67,18 @@ export type RowProps<TRow extends AnyRow> = {
   activeKey?: string
   /** This row is the active one — `state.focus` names it. Highlighted. */
   focused?: boolean
+  /** The table has editable columns, so each cell says whether it is one. */
+  editable?: boolean
+  /** The column whose cell in this row is being edited. Absent for every other row. */
+  editingKey?: string
+  /** Draws the editor for the cell being edited; given only to the row that has it. */
+  renderEditor?: (column: TableColumn<TRow>) => ReactNode
+  /**
+   * Edits of this row's cells still being saved, keyed by column, with the
+   * value each is saving; and the ones that failed, with why. Absent when there
+   * are none, so the memo holds for every other row.
+   */
+  edits?: { pending: Record<string, unknown>; failed: Record<string, string> }
 }
 
 function RowInner<TRow extends AnyRow>({
@@ -93,6 +105,10 @@ function RowInner<TRow extends AnyRow>({
   toggleOnClick,
   activeKey,
   focused,
+  editable,
+  editingKey,
+  renderEditor,
+  edits,
 }: RowProps<TRow>) {
   // Only the active cell is in the tab order; the rest are reached by arrow.
   const tabIndex = (key: string) => (activeKey === undefined ? undefined : activeKey === key ? 0 : -1)
@@ -170,7 +186,13 @@ function RowInner<TRow extends AnyRow>({
       )}
 
       {columns.map((column, columnIndex) => {
-        const context = cellText(row, id, rowIndex, column, types, format)
+        const pending = edits !== undefined && Object.hasOwn(edits.pending, column.key)
+        const failed = edits?.failed[column.key]
+        const cellEditable = editable === true && isCellEditable(column, row)
+        const editing = editingKey === column.key && renderEditor !== undefined
+
+        // A cell still saving shows the value it is saving.
+        const context = cellText(row, id, rowIndex, column, types, format, pending ? { value: edits.pending[column.key] } : undefined)
         const content = renderCell(context, types)
         const leading = columnIndex === 0
         const lines = typeof column.wrap === "number" ? column.wrap : undefined
@@ -204,6 +226,13 @@ function RowInner<TRow extends AnyRow>({
             // can label it in CSS, with no second render.
             data-label={column.header}
             tabIndex={tabIndex(column.key)}
+            data-editable={cellEditable ? "true" : undefined}
+            data-editing={editing ? "true" : undefined}
+            data-pending={pending ? "true" : undefined}
+            data-failed={failed !== undefined ? "true" : undefined}
+            aria-busy={pending || undefined}
+            aria-readonly={editable === true && !cellEditable ? true : undefined}
+            title={failed}
             style={{
               ...(column.pin === "start" ? { left: pinOffsets[column.key] } : {}),
               ...(column.pin === "end" ? { right: pinOffsets[column.key] } : {}),
@@ -216,7 +245,9 @@ function RowInner<TRow extends AnyRow>({
               `-webkit-box` for a line clamp, and a plain block for an exact
               row height, whose cap `height` alone cannot enforce.
             */}
-            {lines !== undefined ? (
+            {editing ? (
+              renderEditor(column)
+            ) : lines !== undefined ? (
               <span className="tpz-clamp" style={{ "--tpz-cell-lines": lines } as React.CSSProperties}>
                 {inner}
               </span>
@@ -225,6 +256,7 @@ function RowInner<TRow extends AnyRow>({
             ) : (
               inner
             )}
+            {failed !== undefined && !editing && <span className="tpz-sr">{`, not saved: ${failed}`}</span>}
           </td>
         )
       })}

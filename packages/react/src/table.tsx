@@ -2,8 +2,16 @@ import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useR
 import {
   INTERACTIVE_SELECTOR,
   canResetSort,
+  editValuesEqual,
+  editorKind,
   entryCell,
   focusCell,
+  fromEditorText,
+  hasEditableColumns,
+  isCellEditable,
+  isInteractiveTarget,
+  typedCharacter,
+  validateEdit,
   isNavigationKey,
   nextCell,
   expandableIds as expandableIdsOf,
@@ -34,6 +42,7 @@ import {
 import { createClasses } from "./classes.js"
 import { TableContext } from "./context.js"
 import { DetailRow } from "./detail-row.js"
+import { CellEditor, type CommitReason } from "./editor.js"
 import { HeaderCell } from "./header-cell.js"
 import { Icon } from "./icon.js"
 import { InfiniteSentinel, Pagination } from "./pagination.js"
@@ -354,7 +363,9 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
 
   /* ── Cell navigation ───────────────────────────────────────────────────── */
 
-  const navigable = props.cellNavigation === true
+  // Editing needs the keyboard to reach cells, so editable columns switch it on unless told otherwise.
+  const editable = useMemo(() => hasEditableColumns(columns), [columns])
+  const navigable = props.cellNavigation ?? editable
 
   /*
     The grid the keyboard moves across: every row a person can land on, and
@@ -418,6 +429,22 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
     const key = cell.dataset["key"]
     if (rowId === undefined || key === undefined) return
 
+    // An editable cell opens its editor on Enter or F2, and on typing — seeded with what was typed.
+    if (editable && cell.dataset["editable"] === "true") {
+      const typed = typedCharacter(event)
+      const seed =
+        event.key === "Enter" || event.key === "F2"
+          ? null
+          : event.key === "Backspace" || event.key === "Delete"
+            ? ""
+            : typed
+      if (seed !== undefined) {
+        event.preventDefault()
+        startEdit(rowId, key, seed ?? undefined)
+        return
+      }
+    }
+
     if (isNavigationKey(event.key) && !event.altKey && !event.shiftKey) {
       const next = nextCell(grid, { rowId, key }, event.key, {
         ctrlKey: event.ctrlKey || event.metaKey,
@@ -474,11 +501,159 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
     const target = navigable ? (entry && entry.rowId === focus.rowId ? cellElement(entry.rowId, entry.key) : undefined) : cellElement(focus.rowId, undefined)
     if (!target) return
 
-    if (target.ownerDocument.activeElement !== target) {
+    // Already there — or inside it, in the editor that cell has just opened.
+    if (!target.contains(target.ownerDocument.activeElement)) {
       target.scrollIntoView?.({ block: focus.align ?? "nearest", inline: "nearest" })
       if (!first && navigable) target.focus({ preventScroll: true })
     }
   }, [focusSignature, navigable, entry, cellElement])
+
+  /* ── Editing ───────────────────────────────────────────────────────────── */
+
+  /*
+    Which cell is open, why its last commit was refused, and the edits still
+    being saved or that failed. All of it is this table's own business, never
+    the caller's state: an editor is open only in a browser, after a person
+    opened it, so a server renders none.
+  */
+  const [editing, setEditing] = useState<{ rowId: string; key: string; seed?: string } | undefined>()
+  const [editError, setEditError] = useState<string | undefined>()
+  const [edits, setEdits] = useState<Record<string, { pending: Record<string, unknown>; failed: Record<string, string> }>>({})
+  const refocus = useRef<{ rowId: string; key: string } | undefined>(undefined)
+  const editingRef = useRef(editing)
+  editingRef.current = editing
+  const cellEditRef = useRef(props.onCellEdit)
+  cellEditRef.current = props.onCellEdit
+
+  if (editable && !props.onCellEdit) warnAboutEditing()
+
+  const rowsById = useMemo(() => new Map(rows.map((row, index) => [rowIds[index]!, row])), [rows, rowIds])
+  const columnsByKey = useMemo(() => new Map(columns.map((column) => [column.key, column])), [columns])
+
+  /** Puts a cell into editing, if it can be edited. */
+  const startEdit = (rowId: string, key: string, seed?: string): boolean => {
+    const row = rowsById.get(rowId)
+    const column = columnsByKey.get(key)
+    if (!row || !column || !isCellEditable(column, row) || editorKind(column, types) === "none") return false
+
+    setEditError(undefined)
+    setEdits((current) => withoutEdit(current, rowId, key, "failed"))
+    setEditing({ rowId, key, seed })
+    return true
+  }
+
+  const cancelEdit = () => {
+    const current = editingRef.current
+    if (!current) return
+    refocus.current = { rowId: current.rowId, key: current.key }
+    setEditing(undefined)
+    setEditError(undefined)
+  }
+
+  /** The next editable cell after this one, or before it, in reading order across the page. */
+  const nextEditable = (rowId: string, key: string, backwards: boolean) => {
+    const cells: Array<{ rowId: string; key: string }> = []
+    for (const id of rowIds) for (const column of columns) cells.push({ rowId: id, key: column.key })
+    if (backwards) cells.reverse()
+
+    const from = cells.findIndex((cell) => cell.rowId === rowId && cell.key === key)
+    return cells.slice(from + 1).find((cell) => {
+      const row = rowsById.get(cell.rowId)
+      const column = columnsByKey.get(cell.key)
+      return row !== undefined && column !== undefined && isCellEditable(column, row) && editorKind(column, types) !== "none"
+    })
+  }
+
+  const finishEdit = (input: { text: string } | { value: unknown }, reason: CommitReason) => {
+    const current = editingRef.current
+    if (!current) return
+    const row = rowsById.get(current.rowId)
+    const column = columnsByKey.get(current.key)
+    if (!row || !column) {
+      setEditing(undefined)
+      return
+    }
+
+    const previous = column.accessor(row)
+    let value = "text" in input ? fromEditorText(input.text, editorKind(column, types), column, previous, format) : input.value
+    if (column.parse) value = column.parse(value, row)
+
+    // Refused: the editor stays open, marked, with the reason beside it. Leaving
+    // the cell is the one way out that does not keep it, and it changes nothing.
+    const error = validateEdit(column, value, row)
+    if (error !== undefined) {
+      if (reason === "blur") {
+        setEditing(undefined)
+        setEditError(undefined)
+      } else {
+        setEditError(error)
+      }
+      return
+    }
+
+    setEditing(undefined)
+    setEditError(undefined)
+    if (reason !== "blur") refocus.current = { rowId: current.rowId, key: current.key }
+
+    if (!editValuesEqual(value, previous)) {
+      const { rowId, key } = current
+      const result = cellEditRef.current?.({ rowId, row, key, value, previousValue: previous })
+      if (isPromiseLike(result)) {
+        setEdits((all) => withEdit(all, rowId, key, "pending", value))
+        result.then(
+          () => setEdits((all) => withoutEdit(all, rowId, key, "pending")),
+          (failure: unknown) =>
+            setEdits((all) =>
+              withEdit(withoutEdit(all, rowId, key, "pending"), rowId, key, "failed", failure instanceof Error && failure.message ? failure.message : "Could not save"),
+            ),
+        )
+      }
+    }
+
+    // Tab carries on editing in the next editable cell, as a spreadsheet does.
+    if (reason === "tab" || reason === "shift-tab") {
+      const next = nextEditable(current.rowId, current.key, reason === "shift-tab")
+      if (next && startEdit(next.rowId, next.key)) {
+        refocus.current = undefined
+        update((state) => focusCell(state, next.rowId, next.key))
+      }
+    }
+  }
+
+  // Back to the cell once its editor has gone, when the keyboard closed it.
+  useLayoutEffect(() => {
+    if (editing || !refocus.current) return
+    const target = refocus.current
+    refocus.current = undefined
+    cellElement(target.rowId, target.key)?.focus({ preventScroll: true })
+  }, [editing, cellElement])
+
+  const onEditPointer = (event: React.MouseEvent<HTMLTableElement>) => {
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const cell = target.closest<HTMLElement>('td[data-editable="true"]')
+    if (!cell || !tableRef.current?.contains(cell) || cell.dataset["editing"] === "true") return
+    if (isInteractiveTarget(target, cell)) return
+    const rowId = cell.parentElement?.dataset["rowId"]
+    const key = cell.dataset["key"]
+    if (rowId !== undefined && key !== undefined) startEdit(rowId, key)
+  }
+
+  /** Draws the editor into the cell being edited. */
+  const renderEditorFor = (row: TRow, rowId: string) => (column: (typeof columns)[number]) => (
+    <CellEditor
+      column={column}
+      row={row}
+      rowId={rowId}
+      value={column.accessor(row)}
+      seed={editing?.seed}
+      kind={editorKind(column, types)}
+      format={format}
+      error={editError}
+      onCommit={finishEdit}
+      onCancel={cancelEdit}
+    />
+  )
 
   /* ── Detail rows ───────────────────────────────────────────────────────── */
 
@@ -642,9 +817,11 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
             className={classes("table")}
             aria-label={props["aria-label"]}
             role={navigable ? "grid" : undefined}
-            aria-readonly={navigable ? true : undefined}
+            aria-readonly={navigable ? !editable : undefined}
             onKeyDown={navigable ? onGridKeyDown : undefined}
             onFocus={navigable ? onGridFocus : undefined}
+            onClick={editable && props.editTrigger === "click" ? onEditPointer : undefined}
+            onDoubleClick={editable && props.editTrigger !== "click" ? onEditPointer : undefined}
           >
             {caption && <caption className="tpz-caption">{caption}</caption>}
 
@@ -792,6 +969,10 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                     toggleOnClick={detail?.toggleOnRowClick}
                     activeKey={entry ? (entry.rowId === id ? entry.key : "") : undefined}
                     focused={state.focus?.rowId === id}
+                    editable={editable}
+                    editingKey={editing?.rowId === id ? editing.key : undefined}
+                    renderEditor={editing?.rowId === id ? renderEditorFor(row, id) : undefined}
+                    edits={edits[id]}
                   />
                   {mountDetail && detail && (
                     <DetailRow
@@ -876,6 +1057,51 @@ function warnAboutServerExport(): void {
       "write the file from whatever you fetch. See " +
       "https://github.com/Gregaly/trapezium/blob/main/docs/server-data.md#exporting",
   )
+}
+
+let warnedAboutEditing = false
+
+/* An editable column with nowhere to send its edits edits nothing, which looks broken. */
+function warnAboutEditing(): void {
+  if (warnedAboutEditing) return
+  if (typeof process !== "undefined" && process.env["NODE_ENV"] === "production") return
+  warnedAboutEditing = true
+  console.warn(
+    "[trapezium] A column is `editable` but the table has no `onCellEdit`, so an edit has nowhere to go and " +
+      "the cell will show its old value again. Handle onCellEdit and update your data with edit.value.",
+  )
+}
+
+/** Whether a handler returned something to wait for. */
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return typeof value === "object" && value !== null && "then" in value && typeof value.then === "function"
+}
+
+type RowEdits = Record<string, { pending: Record<string, unknown>; failed: Record<string, string> }>
+
+/** The edits with one cell's pending value or failure recorded. */
+function withEdit(all: RowEdits, rowId: string, key: string, kind: "pending" | "failed", value: unknown): RowEdits {
+  const row = all[rowId] ?? { pending: {}, failed: {} }
+  const next =
+    kind === "pending"
+      ? { ...row, pending: { ...row.pending, [key]: value } }
+      : { ...row, failed: { ...row.failed, [key]: String(value) } }
+  return { ...all, [rowId]: next }
+}
+
+/** The edits without one cell's pending value or failure; the same object when there was none. */
+function withoutEdit(all: RowEdits, rowId: string, key: string, kind: "pending" | "failed"): RowEdits {
+  const row = all[rowId]
+  if (!row || !Object.hasOwn(row[kind], key)) return all
+  const rest = { ...row[kind] }
+  delete rest[key]
+  const next = { ...row, [kind]: rest }
+  if (Object.keys(next.pending).length === 0 && Object.keys(next.failed).length === 0) {
+    const without = { ...all }
+    delete without[rowId]
+    return without
+  }
+  return { ...all, [rowId]: next }
 }
 
 function SkeletonRows({ columns }: { columns: number }) {
