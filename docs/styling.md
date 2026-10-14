@@ -72,7 +72,7 @@ Every part of the table is a slot, and a class you pass is **added** to the defa
 />
 ```
 
-Slots: `root` `frame` `toolbar` `search` `scroll` `table` `thead` `tbody` `headerRow` `headerCell` `row` `cell` `selectCell` `expandCell` `detailRow` `detailCell` `pagination` `empty` `footer`.
+Slots: `root` `frame` `toolbar` `search` `scroll` `table` `thead` `tbody` `headerRow` `headerCell` `row` `cell` `selectCell` `dragCell` `expandCell` `detailRow` `detailCell` `pagination` `empty` `footer`.
 
 `className`, `classNames` and `unstyled` are the same in every adapter: props in React and Vue, options in Svelte and plain JavaScript.
 

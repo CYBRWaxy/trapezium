@@ -48,7 +48,7 @@ columnControl · pagination · selection · onSelectionChange(ids, rows) · expo
 densityControl · responsive("scroll"|"cards") · stickyHeader · maxHeight ·
 rowHeight("fixed"|"auto"|number) · types · format ·
 rowHref(row) · onRowClick(row, event) · rowClassName(row, index, info) · detail · getParentId(row) ·
-pinnedRows({ top, bottom }) ·
+pinnedRows({ top, bottom }) · rowReorder({ canDrag, onReorder }) ·
 cellNavigation ·
 onCellEdit(edit) · editTrigger("click"|"doubleClick") · emptyState · emptyMessage ·
 toolbar · appendRow · footer · buildHref(state) · linkComponent (React) · onNavigate(href, event) ·
@@ -280,6 +280,24 @@ row). Keyboard: part of the grid (ArrowUp from the first body row reaches the pi
 Ids: row.id / getRowId, else "top-0", "bottom-0". Empty cells are blank. Offsets: a row height each
 on the server, measured in the browser. Style: --tpz-pinned-bg.
 
+## Row reorder (drag)
+
+    rowReorder={{ canDrag: (row) => !row.locked,
+                  onReorder: ({ rowId, row, afterId, beforeId, parentId }) => save() /* may return a Promise */ }}
+    // reorder an array: setRows((rs) => applyRowMove(rs, rs.map((r) => r.id), move))
+
+A drag-handle column (".tpz-drag-handle", slot dragCell) leads the table. Pointer drag (not HTML5
+DnD) with a drop line (data-drop="before"|"after") and auto-scroll near the scroll area's (or the
+window's) edges; Escape cancels. Keyboard: Alt+ArrowUp/Down on the handle — or on any cell with
+cellNavigation — moves one place, focus stays, and a live region announces "Moved to position N of
+M". afterId = the row it now follows (null if first), beforeId = the row it now precedes (null if
+last), counted among all matching rows in client mode (not just the page), the page in server mode.
+Only offered while unsorted (handles aria-disabled under a sort). Children move among siblings only
+(parentId set); a parent moves with its children. Pinned rows don't move. canDrag false → no
+handle. The table never mutates data; a returned Promise shows the new order until it settles
+(reverts on rejection). Touch: long-press the handle to drag; scrolling is never blocked before
+that. In code: moveRowTo, stepRow, applyRowMove, canReorderRows, startRowDrag.
+
 onRowClick (and toggleOnRowClick) ignore clicks on controls inside the row: a[href], button,
 input, select, textarea, label, [role=menu*], [role=button] and the like, or anything with
 data-tpz-interactive. isInteractiveTarget(target, row) is exported.
@@ -410,7 +428,7 @@ CSS custom properties on `.tpz` (--tpz-surface, --tpz-muted, --tpz-border, --tpz
 cell (see Cell renderers). Dark mode follows the page's color-scheme, or `.dark` /
 [data-theme="dark"] on an ancestor, or theme="dark" on the table.
 classNames={{ root, frame, toolbar, search, scroll, table, thead, tbody, headerRow, headerCell, row,
-cell, selectCell, expandCell, detailRow, detailCell, pagination, empty, footer }} adds classes;
+cell, selectCell, dragCell, expandCell, detailRow, detailCell, pagination, empty, footer }} adds classes;
 `unstyled` drops the defaults. Same in
 every adapter.
 responsive="cards" stacks rows below 40rem of container width, in pure CSS.

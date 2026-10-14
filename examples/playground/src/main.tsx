@@ -2,6 +2,7 @@ import { StrictMode, useState } from "react"
 import { createRoot } from "react-dom/client"
 import {
   Table,
+  applyRowMove,
   createState,
   focusCell,
   type Column,
@@ -327,6 +328,13 @@ function EditingSection({ theme }: { theme: "light" | "dark" | undefined }) {
         maxHeight={380}
         pinnedRows={{ top: [draft], bottom: [totals] }}
         pagination={{ pageSize: 20 }}
+        rowReorder={{
+          canDrag: (invoice) => !invoice.paid,
+          onReorder: (move) => {
+            setLog((current) => [`moved ${move.rowId} after ${String(move.afterId)}`, ...current])
+            setRows((current) => applyRowMove(current, current.map((invoice) => invoice.id), move))
+          },
+        }}
         format={{ currency: "AUD", locale: "en-AU", timeZone: "Australia/Sydney" }}
         detail={{
           render: ({ row, collapse }) => (

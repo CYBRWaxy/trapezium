@@ -87,6 +87,7 @@ import { Table } from "@trapezium/react"
 | `onRowClick` | `(row, event) => void` | A click anywhere in the row except on a control inside it — a link, button, input, select, label, menu, or anything marked `data-tpz-interactive`. |
 | `rowClassName` | `(row, index, info?) => string \| undefined` | With child rows, `info` is the row's `RowInfo` — `{ depth, parentId, childCount, context }`. |
 | `pinnedRows` | `{ top?: TRow[], bottom?: TRow[] }` | Rows held at the top or bottom, outside the data — a "new entry" row, a totals row. Same columns, renderers and editors; kept in view; never filtered, sorted, paged, counted, selected or exported. An edit of one carries `pinned`. See [rows](rows.md#pinned-rows). |
+| `rowReorder` | `{ canDrag?: (row) => boolean, onReorder: (move: RowMove) => void \| Promise<unknown> }` | Rows moved by a drag handle or Alt with an arrow key. `RowMove` is `{ rowId, row, afterId, beforeId, parentId? }`. Only while unsorted. See [rows](rows.md#moving-rows). |
 | `getParentId` | `(row) => string \| null \| undefined` | One level of child rows, drawn under their parent and folded with `state.collapsed`. Sorted among themselves, a parent shown as context for a matching child, never split across pages — pages and totals count parents. See [rows](rows.md#child-rows). |
 | `emptyState` | `ReactNode` | Replaces the default. A `#empty` slot in Vue; a node or string elsewhere. |
 | `emptyMessage` | `string` | Text for the default. |
@@ -226,7 +227,7 @@ All pure `(state, …) => state`. Anything that changes which rows match resets 
 
 ### Detail rows and row clicks
 
-`pinnedRowId(row, index, side, getRowId?)` · `pinnedOffset(index, count, side)` · `parentIdsWithChildren(rows, getParentId, getRowId?)` · `getRowsWithChildren(options)` · `expandableIds(rows, rowIds, detail)` · `isDetailOpen(state, row, id, detail)` · `isInteractiveTarget(target, within)` · `INTERACTIVE_SELECTOR`
+`moveRowTo(ids, rowId, targetId, "before" \| "after")` · `stepRow(ids, rowId, -1 \| 1)` · `applyRowMove(rows, ids, move)` · `canReorderRows(sort)` · `startRowDrag({ event, row, targetFor, onDrop, longPress? })` · `pinnedRowId(row, index, side, getRowId?)` · `pinnedOffset(index, count, side)` · `parentIdsWithChildren(rows, getParentId, getRowId?)` · `getRowsWithChildren(options)` · `expandableIds(rows, rowIds, detail)` · `isDetailOpen(state, row, id, detail)` · `isInteractiveTarget(target, within)` · `INTERACTIVE_SELECTOR`
 
 `expandableIds` is the rows among those given that have a detail — what "expand all" opens. `isDetailOpen` is whether a row's detail shows: named in `state.expanded`, and allowed by `canExpand`. `isInteractiveTarget` is the rule every row gesture follows: true when the click landed on a control inside `within` rather than on the row.
 

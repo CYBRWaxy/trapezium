@@ -172,6 +172,35 @@ They are drawn through the same columns, renderers, formatting and editors as th
 
 Styling: `--tpz-pinned-bg` is their background; `tbody[data-pinned] .tpz-tr` selects them.
 
+## Moving rows
+
+```tsx
+import { Table, applyRowMove } from "@trapezium/react"
+
+<Table
+  data={tasks}
+  rowReorder={{
+    onReorder: (move) => setTasks((current) => applyRowMove(current, current.map((task) => task.id), move)),
+  }}
+/>
+```
+
+A drag handle leads each row. Drag a row by it, and a line shows where it will land; near the top or bottom of the scroll area — or of the window, when the table grows with the page — the table scrolls to take it further. From the keyboard, Alt with the up or down arrow moves the focused row one place, and the keyboard stays on it; with cell navigation that works from any of the row's cells. Escape abandons a drag.
+
+`onReorder` receives `{ rowId, row, afterId, beforeId, parentId? }`: the row, the row it now comes straight after (`null` when it is first) and the row it now comes straight before (`null` when it is last). That is what an ordered list in a database needs to place a row between two others, and `applyRowMove(rows, ids, move)` does the same to an array. The neighbours are counted among every row the filters leave, not only the page on screen, so a row dropped at the top of page two comes after the last row of page one; in server mode the page is all the table has.
+
+The table never reorders `data`. It shows the order the data then has — or, when `onReorder` returns a promise, the new order until it settles, going back if it rejects. Every move is announced to a screen reader: "Moved to position 3 of 12".
+
+- **Only while unsorted.** Under a sort the rows are in the sort's order: a row put anywhere else would not stay there, and its neighbours would describe a place in the sort, not in the data. The handles are there but disabled, and say why.
+- **`canDrag(row)`** keeps some rows where they are: they have no handle.
+- **Child rows** move among the children of their parent only, and the move carries `parentId`. A parent takes its children with it; dragged over a child, it lands beside that child's parent.
+- **Pinned rows** do not move.
+- **Touch.** A long press on the handle picks the row up. Until then a finger scrolls the page as it always does — nothing stops a swipe that starts on a handle.
+
+Styling: the class slot `dragCell`, the handle `.tpz-drag-handle`, the row being dragged `data-dragging="true"`, the row it would land beside `data-drop="before"` or `"after"`.
+
+In code: `moveRowTo(ids, rowId, targetId, position)` · `stepRow(ids, rowId, delta)` · `applyRowMove(rows, ids, move)` · `canReorderRows(sort)` · `startRowDrag(options)` — the drag itself, for your own renderer.
+
 ## Row clicks
 
 `onRowClick(row, event)` fires on a click anywhere in a row that was not on a control inside it. A link, a button, an input, a select, a label, a `[role="menu…"]` element or anything marked `data-tpz-interactive` is left to itself, so a button rendered in a cell never also opens the row. `isInteractiveTarget(event.target, row)` and `INTERACTIVE_SELECTOR` are exported for anyone building the same rule into their own gestures.
