@@ -89,6 +89,13 @@ export type RowProps<TRow extends AnyRow> = {
   onToggleChildren?: (id: string) => void
   /** The table is a tree grid, so the row says its level and whether it is open. */
   treegrid?: boolean
+  /**
+   * A pinned row: held against the top or bottom while the body scrolls, with
+   * nothing in the table's own columns — it cannot be selected or opened.
+   */
+  pinned?: "top" | "bottom"
+  /** How far it sits from its edge, past the pinned rows between it and the edge. */
+  pinnedOffset?: string
 }
 
 function RowInner<TRow extends AnyRow>({
@@ -122,6 +129,8 @@ function RowInner<TRow extends AnyRow>({
   tree,
   onToggleChildren,
   treegrid,
+  pinned,
+  pinnedOffset,
 }: RowProps<TRow>) {
   // Only the active cell is in the tab order; the rest are reached by arrow.
   const tabIndex = (key: string) => (activeKey === undefined ? undefined : activeKey === key ? 0 : -1)
@@ -144,6 +153,8 @@ function RowInner<TRow extends AnyRow>({
       data-context={tree?.context ? "true" : undefined}
       aria-level={treegrid && tree ? tree.depth + 1 : undefined}
       aria-expanded={treegrid && tree && tree.childCount > 0 ? !tree.folded : undefined}
+      data-pinned={pinned}
+      style={pinnedOffset === undefined ? undefined : ({ "--tpz-pinned-offset": pinnedOffset } as React.CSSProperties)}
       onClick={
         clickable
           ? (event) => {
@@ -163,16 +174,18 @@ function RowInner<TRow extends AnyRow>({
           tabIndex={tabIndex("__select")}
           style={{ left: pinOffsets["__select"] ?? 0 }}
         >
-          <input
-            type={selectionMode === "single" ? "radio" : "checkbox"}
-            className="tpz-checkbox"
-            checked={selected}
-            disabled={!selectable}
-            tabIndex={controlTabIndex}
-            aria-label={`Select row ${String(rowIndex + 1)}`}
-            onClick={(event) => event.stopPropagation()}
-            onChange={(event) => onToggle(id, event)}
-          />
+          {!pinned && (
+            <input
+              type={selectionMode === "single" ? "radio" : "checkbox"}
+              className="tpz-checkbox"
+              checked={selected}
+              disabled={!selectable}
+              tabIndex={controlTabIndex}
+              aria-label={`Select row ${String(rowIndex + 1)}`}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => onToggle(id, event)}
+            />
+          )}
         </td>
       )}
 
@@ -184,7 +197,7 @@ function RowInner<TRow extends AnyRow>({
           tabIndex={tabIndex("__expand")}
           style={{ left: pinOffsets["__expand"] ?? 0 }}
         >
-          {expander.expandable && (
+          {expander.expandable && !pinned && (
             <button
               type="button"
               className="tpz-expander"

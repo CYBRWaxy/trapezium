@@ -10,6 +10,8 @@ import {
   hasEditableColumns,
   isCellEditable,
   isInteractiveTarget,
+  pinnedOffset,
+  pinnedRowId,
   typedCharacter,
   validateEdit,
   isNavigationKey,
@@ -378,7 +380,22 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
     () => [...(selection ? ["__select"] : []), ...(detail ? ["__expand"] : []), ...visibleKeys],
     [selection, detail, visibleKeys],
   )
-  const grid = useMemo(() => ({ rows: rowIds, columns: navColumns }), [rowIds, navColumns])
+  /* Pinned rows, with ids that cannot collide with the data's fallbacks. */
+  const pinnedTop = useMemo(
+    () => (props.pinnedRows?.top ?? []).map((row, index) => ({ row, id: pinnedRowId(row, index, "top", getRowId) })),
+    [props.pinnedRows?.top, getRowId],
+  )
+  const pinnedBottom = useMemo(
+    () => (props.pinnedRows?.bottom ?? []).map((row, index) => ({ row, id: pinnedRowId(row, index, "bottom", getRowId) })),
+    [props.pinnedRows?.bottom, getRowId],
+  )
+
+  // The pinned rows are rows to the keyboard: up from the body's first row reaches the last one above it.
+  const gridRows = useMemo(
+    () => [...pinnedTop.map((entry) => entry.id), ...rowIds, ...pinnedBottom.map((entry) => entry.id)],
+    [pinnedTop, rowIds, pinnedBottom],
+  )
+  const grid = useMemo(() => ({ rows: gridRows, columns: navColumns }), [gridRows, navColumns])
   const entry = navigable ? entryCell(grid, state.focus) : undefined
   const tableRef = useRef<HTMLTableElement | null>(null)
 
@@ -529,7 +546,19 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
 
   if (editable && !props.onCellEdit) warnAboutEditing()
 
-  const rowsById = useMemo(() => new Map(rows.map((row, index) => [rowIds[index]!, row])), [rows, rowIds])
+  const rowsById = useMemo(() => {
+    const map = new Map(rows.map((row, index) => [rowIds[index]!, row]))
+    for (const entry of [...pinnedTop, ...pinnedBottom]) map.set(entry.id, entry.row)
+    return map
+  }, [rows, rowIds, pinnedTop, pinnedBottom])
+  const pinnedSide = useMemo(
+    () =>
+      new Map<string, "top" | "bottom">([
+        ...pinnedTop.map((entry) => [entry.id, "top"] as const),
+        ...pinnedBottom.map((entry) => [entry.id, "bottom"] as const),
+      ]),
+    [pinnedTop, pinnedBottom],
+  )
   const columnsByKey = useMemo(() => new Map(columns.map((column) => [column.key, column])), [columns])
 
   /** Puts a cell into editing, if it can be edited. */
@@ -555,7 +584,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
   /** The next editable cell after this one, or before it, in reading order across the page. */
   const nextEditable = (rowId: string, key: string, backwards: boolean) => {
     const cells: Array<{ rowId: string; key: string }> = []
-    for (const id of rowIds) for (const column of columns) cells.push({ rowId: id, key: column.key })
+    for (const id of gridRows) for (const column of columns) cells.push({ rowId: id, key: column.key })
     if (backwards) cells.reverse()
 
     const from = cells.findIndex((cell) => cell.rowId === rowId && cell.key === key)
@@ -599,7 +628,8 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
 
     if (!editValuesEqual(value, previous)) {
       const { rowId, key } = current
-      const result = cellEditRef.current?.({ rowId, row, key, value, previousValue: previous })
+      const pinned = pinnedSide.get(rowId)
+      const result = cellEditRef.current?.({ rowId, row, key, value, previousValue: previous, ...(pinned ? { pinned } : {}) })
       if (isPromiseLike(result)) {
         setEdits((all) => withEdit(all, rowId, key, "pending", value))
         result.then(
@@ -656,6 +686,71 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
       onCancel={cancelEdit}
     />
   )
+
+  /* ── Pinned rows ───────────────────────────────────────────────────────── */
+
+  /*
+    How far each pinned row sits from its edge. The server, and the first
+    paint, count one row height per row in between; once the table is in a
+    browser the real heights are measured, so rows that wrap still stack
+    without overlapping — the same way frozen columns get their offsets.
+  */
+  const [pinnedPx, setPinnedPx] = useState<Record<string, string>>({})
+
+  useLayoutEffect(() => {
+    const table = tableRef.current
+    if (!table) return
+    const next: Record<string, string> = {}
+    for (const side of ["top", "bottom"] as const) {
+      const body = table.querySelector<HTMLElement>(`tbody[data-pinned="${side}"]`)
+      if (!body) continue
+      const rowsHere = [...body.querySelectorAll<HTMLElement>("tr[data-row-id]")]
+      if (side === "bottom") rowsHere.reverse()
+      let offset = 0
+      for (const tr of rowsHere) {
+        next[`${side}:${tr.dataset["rowId"] ?? ""}`] = `${String(offset)}px`
+        offset += tr.getBoundingClientRect().height
+      }
+    }
+    setPinnedPx((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next))
+  }, [pinnedTop, pinnedBottom, columns, state.widths, state.density, rowHeight])
+
+  /** One pinned body, drawn through the same rows as the data. */
+  const pinnedBody = (side: "top" | "bottom", entries: Array<{ row: TRow; id: string }>) =>
+    entries.length > 0 && (
+      <tbody className={classes("tbody", "tpz-pinned-body")} data-pinned={side}>
+        {entries.map(({ row, id }, index) => (
+          <Row
+            key={id}
+            row={row}
+            id={id}
+            rowIndex={index}
+            columns={columns}
+            types={types}
+            format={format}
+            classes={classes}
+            className={rowClassName?.(row, index)}
+            selected={false}
+            selectionMode={selection?.mode}
+            selectable={false}
+            pinOffsets={pinOffsets}
+            pinEdges={pinEdges}
+            fit={rowHeightMode === "exact"}
+            onToggle={toggleRow}
+            linkComponent={Link}
+            expander={detail ? { expandable: false, expanded: false, detailId: "" } : undefined}
+            activeKey={entry ? (entry.rowId === id ? entry.key : "") : undefined}
+            focused={state.focus?.rowId === id}
+            editable={editable}
+            editingKey={editing?.rowId === id ? editing.key : undefined}
+            renderEditor={editing?.rowId === id ? renderEditorFor(row, id) : undefined}
+            edits={edits[id]}
+            pinned={side}
+            pinnedOffset={pinnedPx[`${side}:${id}`] ?? pinnedOffset(index, entries.length, side)}
+          />
+        ))}
+      </tbody>
+    )
 
   /* ── Detail rows ───────────────────────────────────────────────────────── */
 
@@ -913,6 +1008,8 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
               </tr>
             </thead>
 
+            {pinnedBody("top", pinnedTop)}
+
             <tbody className={classes("tbody")}>
               {loading && rows.length === 0 && <SkeletonRows columns={columnCount} />}
 
@@ -1013,6 +1110,8 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                 </tr>
               )}
             </tbody>
+
+            {pinnedBody("bottom", pinnedBottom)}
           </table>
 
           {/*

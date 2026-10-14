@@ -37,6 +37,7 @@ export type {
   HeaderSearchOptions,
   PaginationOptions,
   PartialTableState,
+  PinnedRows,
   Pin,
   ResolvedColumn,
   ResolvedHeaderSearch,
@@ -178,6 +179,8 @@ export { resolveSelection, selectableIds } from "./selection.js"
 export { INTERACTIVE_SELECTOR, isInteractiveTarget } from "./interaction.js"
 export { expandableIds, isDetailOpen } from "./detail.js"
 export { getRowsWithChildren, parentIdsWithChildren } from "./children.js"
+export { pinnedOffset, pinnedRowId } from "./pinned.js"
+export type { PinnedSide } from "./pinned.js"
 export { entryCell, isNavigationKey, nextCell } from "./navigation.js"
 export {
   editValuesEqual,

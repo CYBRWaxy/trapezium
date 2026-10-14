@@ -12,6 +12,7 @@ import type {
   HeaderSearchOptions,
   PaginationOptions,
   PartialTableState,
+  PinnedRows,
   ResolvedColumn,
   RowHeight,
   RowInfo,
@@ -315,6 +316,18 @@ export type TableProps<TRow extends AnyRow = AnyRow> = {
    * of its own. One level only: deeper rows go under the top of their chain.
    */
   getParentId?: (row: TRow) => string | null | undefined
+
+  /**
+   * Rows held at the top or bottom of the table, outside `data` — an editable
+   * "new entry" row above everything, a totals row below it.
+   *
+   * Drawn through the same columns, renderers and editors, and kept in view
+   * while the body scrolls. Never filtered, sorted, paged, counted, selected
+   * or exported. The keyboard reaches them: the up arrow from the first row of
+   * the body lands on the last pinned row above it. An edit of one says so with
+   * `edit.pinned`.
+   */
+  pinnedRows?: PinnedRows<TRow>
 
   /** Makes each row a link. The leading cell becomes an anchor. */
   rowHref?: (row: TRow) => string

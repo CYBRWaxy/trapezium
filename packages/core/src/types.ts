@@ -730,6 +730,21 @@ export type DetailOptions<TRow = AnyRow, TNode = unknown> = {
   toggleOnRowClick?: boolean
 }
 
+/**
+ * Rows held at the top or bottom of the table, outside the data — an editable
+ * "new entry" row, a totals row.
+ *
+ * Drawn through the same columns, renderers and editors as the data, and kept
+ * in view while the body scrolls. Never filtered, searched, sorted, paged,
+ * counted, selected or exported. Give them ids of their own (`id`, or the
+ * table's `getRowId`) when they are edited, so an edit can say which one; a
+ * row without one is `"top-0"`, `"bottom-0"` and so on.
+ */
+export type PinnedRows<TRow = AnyRow> = {
+  top?: readonly TRow[]
+  bottom?: readonly TRow[]
+}
+
 /** How a row is identified across sorting, filtering and paging. */
 export type GetRowId<TRow> = (row: TRow, index: number) => string
 
