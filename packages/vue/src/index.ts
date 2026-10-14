@@ -51,6 +51,7 @@ export {
   setCollapsed,
   toggleCollapsed,
   applyRowMove,
+  rangeSelection,
   copyText,
   downloadText,
 } from "@trapezium/core"

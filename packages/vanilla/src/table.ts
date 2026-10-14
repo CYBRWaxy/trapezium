@@ -27,6 +27,9 @@ import {
   INTERACTIVE_SELECTOR,
   isDetailOpen,
   isInteractiveTarget,
+  clearSelection,
+  rangeSelection,
+  startDragSelect,
   applyRowMove,
   canReorderRows,
   moveRowTo,
@@ -1874,7 +1877,91 @@ export function createTable<TRow extends AnyRow>(
     if (next !== state) update(next)
   })
 
+  /*
+    A range built by the keyboard or by a sweep of the pointer: the rows
+    between an anchor and wherever the gesture has reached, on top of what was
+    selected when it began — recomputed each time, so going back gives rows up.
+  */
+  let range: { anchor: string; base: string[] } | undefined
+
+  function extendRange(target: string, start: string, extend: boolean) {
+    if (!range) {
+      const anchor = extend ? (lastToggled ?? start) : start
+      range = { anchor, base: extend ? [...state.selection] : [] }
+    }
+    lastToggled = range.anchor
+    update({ ...state, selection: rangeSelection(range.base, renderedSelectable, range.anchor, target) })
+  }
+
+  /*
+    Keys that belong to the selection, whether or not the keyboard moves
+    between cells: Shift with an arrow extends it a row at a time, and Escape
+    clears it. Only from a cell or a row's checkbox — an editor, or a control
+    of the caller's, keeps its keys.
+  */
+  function selectionKeys(event: KeyboardEvent): boolean {
+    const selection = selectionOf()
+    if (!selection || event.defaultPrevented) return false
+    const target = event.target
+    if (!(target instanceof HTMLElement) || !body.contains(target)) return false
+    const tr = target.closest<HTMLElement>("tr[data-row-id]")
+    if (!tr || tr.classList.contains("tpz-detail-row")) return false
+    if (!(target.tagName === "TD" || target.matches("input.tpz-checkbox"))) return false
+
+    if (event.key === "Escape" && state.selection.length > 0) {
+      event.preventDefault()
+      range = undefined
+      update(clearSelection(state))
+      return true
+    }
+
+    if (event.shiftKey && !event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown") && selection.mode === "multiple") {
+      const id = tr.dataset["rowId"] ?? ""
+      const next = renderedIds[renderedIds.indexOf(id) + (event.key === "ArrowDown" ? 1 : -1)]
+      event.preventDefault()
+      if (next === undefined) return true
+      range ??= { anchor: id, base: [...state.selection] }
+      extendRange(next, id, false)
+
+      // The keyboard goes with the range: to the same column of the next row, or its checkbox.
+      const key = target.tagName === "TD" ? target.dataset["key"] : "__select"
+      const cell = key === undefined ? undefined : cellElement(next, key)
+      const focusable = target.tagName === "TD" ? cell : cell?.querySelector<HTMLElement>("input.tpz-checkbox")
+      focusable?.focus({ preventScroll: true })
+      if (typeof focusable?.scrollIntoView === "function") focusable.scrollIntoView({ block: "nearest" })
+      return true
+    }
+
+    if (event.key !== "Shift") range = undefined
+    return false
+  }
+
+  /* A press on a row that moves becomes a sweep that selects every row it crosses. */
+  body.addEventListener("pointerdown", (event) => {
+    const selection = selectionOf()
+    if (!selection?.dragSelect || selection.mode !== "multiple" || event.button !== 0) return
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const tr = target.closest<HTMLElement>("tr[data-row-id]")
+    if (!tr || isInteractiveTarget(target, tr) || target.closest('[data-editing="true"]')) return
+    const start = tr.dataset["rowId"] ?? ""
+    if (!renderedSelectable.includes(start)) return
+    const extend = event.shiftKey
+
+    range = undefined
+    startDragSelect({
+      event,
+      row: tr,
+      rowFor: (element) => {
+        const over = element.closest<HTMLElement>("tr[data-row-id]")
+        return over && body.contains(over) && renderedSelectable.includes(over.dataset["rowId"] ?? "") ? over : undefined
+      },
+      onSweep: (_, to) => extendRange(to.dataset["rowId"] ?? start, start, extend),
+    })
+  })
+
   table.addEventListener("keydown", (event) => {
+    if (selectionKeys(event)) return
     if (!navigable() || event.defaultPrevented) return
     const target = event.target
     if (!(target instanceof HTMLElement)) return
@@ -2244,13 +2331,40 @@ export function createTable<TRow extends AnyRow>(
   function syncSelectAll() {
     if (!selectAllBox) return
 
-    const selectedHere = renderedSelectable.filter((id) => state.selection.includes(id)).length
-    const all = renderedSelectable.length > 0 && selectedHere === renderedSelectable.length
+    const { scope, all, matching, total } = headerSelection()
+    const selectedHere = scope.filter((id) => state.selection.includes(id)).length
 
     selectAllBox.defaultChecked = all
     selectAllBox.checked = all
     selectAllBox.indeterminate = selectedHere > 0 && !all
-    selectAllBox.setAttribute("aria-label", all ? "Clear selection" : "Select all rows on this page")
+    selectAllBox.setAttribute(
+      "aria-label",
+      all ? "Clear selection" : matching ? `Select all ${total.toLocaleString()} matching rows` : "Select all rows on this page",
+    )
+  }
+
+  /**
+   * What the header checkbox speaks for: the selectable rows on screen, or —
+   * with `selectAll: "matching"` — every selectable row the filters leave,
+   * which in server mode the table can only count, not list.
+   */
+  function headerSelection(): { scope: string[]; all: boolean; matching: boolean; total: number } {
+    const selection = selectionOf()
+    const matching = selection?.selectAll === "matching"
+    if (!matching) {
+      const scope = [...renderedSelectable]
+      return { scope, all: scope.length > 0 && scope.every((id) => state.selection.includes(id)), matching, total: scope.length }
+    }
+
+    const { matched, total } = current()
+    if (settings.server) {
+      const scope = [...renderedSelectable]
+      const all = scope.length > 0 && scope.every((id) => state.selection.includes(id)) && state.selection.length >= total
+      return { scope, all, matching, total }
+    }
+
+    const scope = selectableIds(matched, matched.map((row, index) => resolveRowId(row, index, settings.getRowId)), selection?.isSelectable)
+    return { scope, all: scope.length > 0 && scope.every((id) => state.selection.includes(id)), matching, total }
   }
 
   /**
@@ -2335,9 +2449,34 @@ export function createTable<TRow extends AnyRow>(
     }) as HTMLInputElement
 
     box.addEventListener("change", () => {
-      const ids = [...renderedSelectable]
-      const selectedHere = ids.filter((id) => state.selection.includes(id)).length
-      update(setSelected(state, ids, !(ids.length > 0 && selectedHere === ids.length)))
+      const { scope, all, matching } = headerSelection()
+      if (all) {
+        update(matching ? clearSelection(state) : setSelected(state, scope, false))
+        return
+      }
+      if (!matching || !settings.server) {
+        update(setSelected(state, scope, true))
+        return
+      }
+
+      // Every matching row lives on the server; ask for them.
+      const ask = source()?.all
+      if (!ask) {
+        warnAboutServerSelectAll()
+        update(setSelected(state, scope, true))
+        return
+      }
+      box.disabled = true
+      box.setAttribute("aria-busy", "true")
+      void Promise.resolve(ask(state))
+        .then((everyRow) => {
+          const ids = selectableIds(everyRow, everyRow.map((row, index) => resolveRowId(row, index, settings.getRowId)), selectionOf()?.isSelectable)
+          update(setSelected(state, ids, true))
+        })
+        .finally(() => {
+          box.disabled = false
+          box.removeAttribute("aria-busy")
+        })
     })
 
     cell.append(box)
@@ -4049,6 +4188,19 @@ function pageRowsFrom(cell: HTMLElement): number {
   const scrolls = scroll !== null && scroll.scrollHeight > scroll.clientHeight + 1
   const height = scrolls ? scroll.clientHeight : cell.ownerDocument.defaultView?.innerHeight ?? 0
   return Math.max(1, Math.floor(height / rowHeight) - 1)
+}
+
+let warnedAboutSelectAll = false
+
+/* "Select every matching row" with the rows on a server and no way to ask for them selects one page. */
+function warnAboutServerSelectAll(): void {
+  if (warnedAboutSelectAll) return
+  if (typeof process !== "undefined" && process.env["NODE_ENV"] === "production") return
+  warnedAboutSelectAll = true
+  console.warn(
+    "[trapezium] selection.selectAll is \"matching\" in server mode, but the table has no server.all to fetch " +
+      "the matching rows from, so the header checkbox selected the page on screen. Pass server: { all: (state) => … }.",
+  )
 }
 
 /** Whether a handler returned something to wait for. */
