@@ -43,6 +43,31 @@ export function cachedText(
   return text
 }
 
+const searchTexts = new WeakMap<object, Map<string, string>>()
+
+/**
+ * A row's search text — every searchable cell, folded and joined — built the
+ * first time a search reaches the row and remembered against it, under a
+ * signature naming the columns and formatting it was built from. Remembered
+ * the same way as the cells' text, and released the same way: with the row.
+ */
+export function searchText(row: object, signature: string, build: () => string): string {
+  let perRow = searchTexts.get(row)
+  if (!perRow) {
+    perRow = new Map()
+    searchTexts.set(row, perRow)
+  }
+
+  const remembered = perRow.get(signature)
+  if (remembered !== undefined) return remembered
+
+  const text = build()
+  // Only the latest signature is worth keeping: a table searches with one set of columns at a time.
+  perRow.clear()
+  perRow.set(signature, text)
+  return text
+}
+
 /**
  * Names the column and the formatting that produced a cached string.
  *

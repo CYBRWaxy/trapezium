@@ -10,7 +10,8 @@
  * produced — no effect, no correction after paint, no flash of unsorted rows.
  */
 
-import { cachedText, textCacheKey } from "./cell-text.js"
+import { cachedText, searchText, textCacheKey } from "./cell-text.js"
+import { columnsSignature, remembered, stageKeys, type PipelineCache } from "./pipeline-cache.js"
 import { getRowsWithChildren } from "./children.js"
 import { filterRows } from "./filter.js"
 import { type TypeRegistry } from "./registry.js"
@@ -22,7 +23,7 @@ import type {
   TableRows,
   TableState,
 } from "./types.js"
-import { clamp, compareUnknown, createTextMatcher, isEmpty } from "./util.js"
+import { clamp, compareUnknown, foldText, isEmpty } from "./util.js"
 
 export type PipelineOptions<TRow, TNode = unknown> = {
   rows: readonly TRow[]
@@ -59,6 +60,13 @@ export type PipelineOptions<TRow, TNode = unknown> = {
    * `children.ts` — and the result carries `info` for each row.
    */
   getParentId?: (row: TRow) => string | null | undefined
+  /**
+   * Where this table keeps what the pipeline worked out last time — make one
+   * with `createPipelineCache` and pass the same one on every run. A page
+   * turn, a selection or a moved cursor then costs nothing, and only the
+   * stages a change reaches are run again.
+   */
+  cache?: PipelineCache<TRow>
 }
 
 /**
@@ -95,9 +103,18 @@ export function getRows<TRow extends AnyRow, TNode = unknown>(
     }
   }
 
-  const filtered = filterRows(rows, columns, state.filters, state.match, types.get, format)
-  const searched = searchRows(filtered, columns, state.search, types, format)
-  const sorted = sortRows(searched, columns, state, types, format)
+  // Each stage kept until something it reads changes: a page turn reruns none of them.
+  const signature = columnsSignature(columns, types, format)
+  const keys = stageKeys(state)
+  const filtered = remembered(options.cache, "filtered", rows, keys.filtered + signature.key, signature.deps, () =>
+    filterRows(rows, columns, state.filters, state.match, types.get, format),
+  )
+  const searched = remembered(options.cache, "searched", rows, keys.searched + signature.key, signature.deps, () =>
+    searchRows(filtered, columns, state.search, types, format),
+  )
+  const sorted = remembered(options.cache, "sorted", rows, keys.sorted + signature.key, signature.deps, () =>
+    sortRows(searched, columns, state, types, format),
+  )
 
   const total = sorted.length
   const pages = pageCount(total, state.pageSize)
@@ -240,36 +257,49 @@ export function searchRows<TRow extends AnyRow, TNode = unknown>(
 
   if (searchable.length === 0) return [...rows]
 
-  const matches = createTextMatcher(query)
+  /*
+    Each row is searched as one string: every searchable cell's stored value
+    and shown text, folded, joined by a character nobody types. Built the first
+    time a row is searched and remembered against it, so a keystroke after the
+    first is one `includes` a row rather than a fold and a comparison for every
+    cell — about fifty times less work at twenty-six columns. The separator
+    keeps a match from running from one cell into the next.
+  */
+  const needle = foldText(query)
+  const signature = searchable.map((column) => column.cacheKey).join(SEPARATOR)
 
-  return rows.filter((row) => {
-    for (const column of searchable) {
-      const value = column.accessor(row)
-      if (isEmpty(value)) continue
+  return rows.filter((row) =>
+    searchText(row as object, signature, () => {
+      const parts: string[] = []
+      for (const column of searchable) {
+        const value = column.accessor(row)
+        if (isEmpty(value)) continue
 
-      if (Array.isArray(value)) {
-        if (value.some((entry) => matches(String(entry)))) return true
-      } else if (typeof value !== "object") {
-        /*
-          Only primitives are compared as they are. `String({…})` is
-          "[object Object]", so without this a search for "object" matches every
-          row with an address, a file or a blob of JSON in it — and a search for
-          the postcode inside that address matches nothing, because the raw form
-          never contained it. The formatted text below is the real answer for
-          anything structured.
-        */
-        if (matches(String(value))) return true
+        if (Array.isArray(value)) {
+          for (const entry of value) parts.push(foldText(String(entry)))
+        } else if (typeof value !== "object") {
+          /*
+            Only primitives are compared as they are. `String({…})` is
+            "[object Object]", so without this a search for "object" matches
+            every row with an address, a file or a blob of JSON in it — and a
+            search for the postcode inside that address matches nothing,
+            because the raw form never contained it. The formatted text below
+            is the real answer for anything structured.
+          */
+          parts.push(foldText(String(value)))
+        }
+
+        if (!column.formats) continue
+        const text = cachedText(row as object, column.cacheKey, column.type, value, column.context)
+        if (text !== "") parts.push(foldText(text))
       }
-
-      if (!column.formats) continue
-
-      const text = cachedText(row as object, column.cacheKey, column.type, value, column.context)
-      if (text !== "" && matches(text)) return true
-    }
-
-    return false
-  })
+      return parts.join(SEPARATOR)
+    }).includes(needle),
+  )
 }
+
+/** Between the cells of a row's search text: a control character, which nobody types into a search box. */
+const SEPARATOR = "\u0001"
 
 /**
  * Sorting, by every level in the state, in order.

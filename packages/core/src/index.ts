@@ -128,6 +128,8 @@ export {
   sortRows,
 } from "./pipeline.js"
 export type { PipelineOptions } from "./pipeline.js"
+export { createPipelineCache } from "./pipeline-cache.js"
+export type { PipelineCache } from "./pipeline-cache.js"
 
 export {
   DEFAULT_STATE,
@@ -237,6 +239,7 @@ export {
   clamp,
   compareUnknown,
   createTextMatcher,
+  foldText,
   createTextTest,
   getPath,
   humanise,

@@ -27,6 +27,7 @@
  */
 
 import { filterRows } from "./filter.js"
+import { columnsSignature, remembered, stageKeys } from "./pipeline-cache.js"
 import { pageCount, resolveRowId, searchRows, sortRows, type PipelineOptions } from "./pipeline.js"
 import type { AnyRow, RowInfo, TableRows } from "./types.js"
 import { clamp } from "./util.js"
@@ -76,10 +77,20 @@ export function getRowsWithChildren<TRow extends AnyRow, TNode>(
     else childrenOf.set(parent, [index])
   })
 
-  // Every row on its own: what the filters and the search let through.
-  const matched = server
-    ? new Set(rows)
-    : new Set(searchRows(filterRows(rows, columns, state.filters, state.match, types.get, format), columns, state.search, types, format))
+  // Every row on its own: what the filters and the search let through — remembered, like every stage.
+  const signature = columnsSignature(columns, types, format)
+  const keys = stageKeys(state)
+  const filtered = server
+    ? rows
+    : remembered(options.cache, "filtered", rows, keys.filtered + signature.key, signature.deps, () =>
+        filterRows(rows, columns, state.filters, state.match, types.get, format),
+      )
+  const searched = server
+    ? rows
+    : remembered(options.cache, "searched", rows, keys.searched + signature.key, signature.deps, () =>
+        searchRows(filtered, columns, state.search, types, format),
+      )
+  const matched = new Set(searched)
 
   let families: Family[] = []
   rows.forEach((row, index) => {

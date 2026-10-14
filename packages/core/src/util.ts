@@ -176,6 +176,15 @@ export function textEndsWith(haystack: string, needle: string): boolean {
  * amount on screen reads "1 240,50 €" and contains nothing a space bar can
  * type. Nobody can see the difference, so it must not make one.
  */
+/**
+ * Text as every comparison in the table sees it: lower case, accents
+ * stripped, and every kind of space an ordinary one. Exported for anyone
+ * building their own search over the same text.
+ */
+export function foldText(value: string): string {
+  return fold(value)
+}
+
 function fold(value: string): string {
   // Plain ASCII has no accents to strip and no unusual spaces, so folding it
   // *is* lower-casing it — and nearly every value a table holds is plain ASCII.

@@ -143,7 +143,7 @@ function resolveColumn<TRow extends AnyRow, TNode>(
 ): ResolvedColumn<TRow, TNode> {
   const merged = { ...options.defaults, ...definition }
   const key = String(merged.key)
-  const accessor = merged.accessor ?? ((row: TRow) => getPath(row, key))
+  const accessor = merged.accessor ?? pathAccessor<TRow>(key)
 
   const typeName = merged.type ?? inferOwnType(key, accessor, sample, types, options.server === true)
   const type = types.get(typeName)
@@ -194,6 +194,22 @@ function resolveColumn<TRow extends AnyRow, TNode>(
     pin: state.pinned[key] ?? merged.pin,
     index: 0,
   }
+}
+
+/*
+  One reader per key, the same function every time the columns are resolved.
+  The pipeline remembers its answers until a column's accessor changes, and a
+  fresh arrow function on every resolve would look like a change every time.
+*/
+const pathAccessors = new Map<string, (row: AnyRow) => unknown>()
+
+function pathAccessor<TRow extends AnyRow>(key: string): (row: TRow) => unknown {
+  let accessor = pathAccessors.get(key)
+  if (!accessor) {
+    accessor = (row: AnyRow) => getPath(row, key)
+    pathAccessors.set(key, accessor)
+  }
+  return accessor
 }
 
 /**

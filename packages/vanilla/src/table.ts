@@ -2,6 +2,7 @@ import {
   DEFAULT_FORMAT,
   DEFAULT_STATE,
   addSort,
+  createPipelineCache,
   canResetSort,
   columnSearchText,
   copyText,
@@ -788,13 +789,35 @@ export function createTable<TRow extends AnyRow>(
     return typeof settings.server === "object" ? settings.server : undefined
   }
 
+  /*
+    Built once per `types` and `format` the caller passes, not on every call:
+    the pipeline remembers its work until the registry or the formatting
+    changes, and a new one on every render would be a change on every render.
+  */
+  let builtRegistry: { from: TableOptions<TRow>["types"]; registry: ReturnType<typeof createTypeRegistry> } | undefined
+  let builtFormat: { from: TableOptions<TRow>["format"]; format: FormatContext } | undefined
+
   function registry() {
-    return settings.types ? createTypeRegistry(settings.types) : defaultTypeRegistry
+    if (!settings.types) return defaultTypeRegistry
+    let built = builtRegistry
+    if (!built || built.from !== settings.types) {
+      built = { from: settings.types, registry: createTypeRegistry(settings.types) }
+      builtRegistry = built
+    }
+    return built.registry
   }
 
   function formatting(): FormatContext {
-    return { ...DEFAULT_FORMAT, ...settings.format }
+    let built = builtFormat
+    if (!built || built.from !== settings.format) {
+      built = { from: settings.format, format: { ...DEFAULT_FORMAT, ...settings.format } }
+      builtFormat = built
+    }
+    return built.format
   }
+
+  // What the pipeline worked out last time, so a page turn, a tick or a moved cursor costs nothing.
+  const pipelineCache = createPipelineCache<TRow>()
 
   /** The data, with a move that is still being saved applied to it. */
   function viewData(): readonly TRow[] {
@@ -831,6 +854,7 @@ export function createTable<TRow extends AnyRow>(
       reveal: pagination ? reveal : undefined,
       getRowId: settings.getRowId,
       getParentId: settings.getParentId,
+      cache: pipelineCache,
     })
 
     return { columns: visible, hidden, pagination, ...result }

@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
   DEFAULT_FORMAT,
   DEFAULT_STATE,
+  createPipelineCache,
   createTypeRegistry,
   defaultTypeRegistry,
   getRows,
@@ -180,6 +181,9 @@ export function useTable<TRow extends AnyRow>(props: TableProps<TRow>) {
     The last row revealed is remembered in an effect rather than during
     render, so a render React throws away and redoes still reveals.
   */
+  // What the pipeline worked out last time, so a page turn, a tick or a moved cursor costs nothing.
+  const pipelineCache = useRef(createPipelineCache<TRow>())
+
   const focusRow = state.focus?.rowId
   const revealed = useRef<string | undefined>(undefined)
   const reveal = !server && focusRow !== undefined && focusRow !== revealed.current ? focusRow : undefined
@@ -199,6 +203,7 @@ export function useTable<TRow extends AnyRow>(props: TableProps<TRow>) {
         reveal: pagination ? reveal : undefined,
         getRowId,
         getParentId: props.getParentId,
+        cache: pipelineCache.current,
       }),
     [data, visible, state, types, format, server, total, accumulate, pagination, reveal, getRowId, props.getParentId],
   )
