@@ -359,8 +359,26 @@ export type ColumnDef<TRow = AnyRow, TNode = unknown> = {
   /** Replaces the cell's markup entirely. Use `format` when the result is still text. */
   render?: (context: CellContext<TRow, TNode>) => TNode
 
-  /** Replaces the header's markup. The sort and filter controls are yours to place. */
+  /**
+   * Replaces the header's text with your own markup — an icon beside the
+   * name, a unit, a badge. The column's sort control, menu, search and resize
+   * handle stay where they are around it, and keep working.
+   *
+   * What it returns sits inside the sort control, so keep it to phrasing
+   * content: text, icons, badges — not a link or a button, which cannot sit
+   * inside another control. The control is still named by `header`, so a
+   * screen reader hears the column's name whatever the renderer draws.
+   */
   renderHeader?: (context: HeaderContext<TRow, TNode>) => TNode
+
+  /**
+   * What the column means, for anyone who is not sure — "Days since the
+   * invoice was due", "Excludes tax". Shown as a tooltip while the header is
+   * hovered or has the keyboard, linked to the header with `aria-describedby`
+   * so a screen reader reads it too, and underlined faintly so a person can
+   * see there is something to read. Plain text.
+   */
+  description?: string
 
   /** Defaults to true for every type that can be ordered. */
   sortable?: boolean

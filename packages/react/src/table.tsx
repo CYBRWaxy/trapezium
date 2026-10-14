@@ -1340,6 +1340,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                     formatValue={formatValue(column)}
                     fetchOptions={column.filterOptions ? undefined : distinctFor?.(column.key)}
                     searchDebounce={headerSearchDebounce}
+                    descriptionId={column.description ? `${baseId}-desc-${encodeURIComponent(column.key)}` : undefined}
                     sortLevels={sortLevels}
                     navigate={navigate}
                     className={classes("headerCell", column.headerClassName)}

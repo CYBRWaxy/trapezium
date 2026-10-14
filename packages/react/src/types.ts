@@ -108,6 +108,8 @@ export type LinkComponent = (props: {
   children: ReactNode
   "aria-current"?: "page" | undefined
   "aria-label"?: string
+  /** Set on a sort link whose column has a `description`. Spread it onto the anchor. */
+  "aria-describedby"?: string
   title?: string
   /**
    * `false` on a link inside a draggable header, so that dragging the header

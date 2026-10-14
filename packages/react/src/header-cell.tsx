@@ -24,6 +24,7 @@ import {
   type TableState,
 } from "@trapezium/core"
 
+import { Popup } from "./editor.js"
 import { FilterControl } from "./filter-control.js"
 import { HeaderSearchBox, HeaderSearchTrigger } from "./header-search.js"
 import { Icon } from "./icon.js"
@@ -63,6 +64,7 @@ export function HeaderCell<TRow extends AnyRow>({
   sortLevels,
   navigate,
   className = "tpz-th",
+  descriptionId,
 }: {
   column: TableColumn<TRow>
   state: TableState
@@ -110,8 +112,36 @@ export function HeaderCell<TRow extends AnyRow>({
   navigate?: (href: string, event: React.MouseEvent) => void
   /** The resolved slot class, with the column's own `headerClassName` already added. */
   className?: string
+  /**
+   * The element id of the column's description, when it has one — the same on
+   * a server and in a browser, so the header's `aria-describedby` survives
+   * hydration.
+   */
+  descriptionId?: string
 }) {
   const [dropEdge, setDropEdge] = useState<"before" | "after" | undefined>()
+
+  /*
+    A column's description: always in the header for a screen reader, linked
+    by `aria-describedby`; shown as a tooltip beside the header while it is
+    hovered or has the keyboard. The tooltip is for the eye only — the
+    description is already announced — and appears only in a browser.
+  */
+  const description = column.description
+  const describedBy = description ? descriptionId : undefined
+  const [tooltip, setTooltip] = useState(false)
+  const [labelElement, setLabelElement] = useState<HTMLSpanElement | null>(null)
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(tooltipTimer.current), [])
+  const showTooltip = (delay: number) => {
+    if (!description) return
+    clearTimeout(tooltipTimer.current)
+    tooltipTimer.current = setTimeout(() => setTooltip(true), delay)
+  }
+  const hideTooltip = () => {
+    clearTimeout(tooltipTimer.current)
+    setTooltip(false)
+  }
   const [dragging, setDragging] = useState(false)
   const headerRef = useRef<HTMLTableCellElement | null>(null)
 
@@ -190,7 +220,13 @@ export function HeaderCell<TRow extends AnyRow>({
 
   const label = (
     <>
-      <span className="tpz-th-label">{column.header}</span>
+      {/*
+        A header renderer replaces the text, inside the sort control — so what
+        it returns is phrasing content: text, an icon, a badge, never a control.
+      */}
+      <span className="tpz-th-label" ref={setLabelElement}>
+        {column.renderHeader ? column.renderHeader({ column, sort }) : column.header}
+      </span>
       {sort && (
         <Icon
           name={sort.direction === "asc" ? "sortAscending" : "sortDescending"}
@@ -225,6 +261,13 @@ export function HeaderCell<TRow extends AnyRow>({
       data-dragging={dragging ? "true" : undefined}
       data-drop={dropEdge}
       data-searching={searching && searchable ? "true" : undefined}
+      data-described={description ? "true" : undefined}
+      aria-describedby={describedBy}
+      onMouseEnter={description ? () => showTooltip(400) : undefined}
+      onMouseLeave={description ? hideTooltip : undefined}
+      onFocus={description ? () => showTooltip(0) : undefined}
+      onBlur={description ? hideTooltip : undefined}
+      onKeyDown={description ? (event) => event.key === "Escape" && hideTooltip() : undefined}
       // A draggable ancestor takes the mouse away from a text box: dragging to
       // select what was typed would pick the column up instead.
       draggable={reorderable && !searching}
@@ -360,11 +403,26 @@ export function HeaderCell<TRow extends AnyRow>({
             onSelect={(additive) => apply((current) => toggleSort(current, column.key, additive && multiSort))}
             columnHeader={column.header}
             priority={priority}
+            describedBy={describedBy}
+            named={column.renderHeader !== undefined}
           >
             {label}
           </SortButton>
         ) : (
           <span className="tpz-th-button">{label}</span>
+        )}
+
+        {description && (
+          <span id={describedBy} className="tpz-sr">
+            {description}
+          </span>
+        )}
+        {tooltip && description && (
+          <Popup anchor={labelElement}>
+            <div className="tpz-tooltip" aria-hidden="true">
+              {description}
+            </div>
+          </Popup>
         )}
 
         {features.menu && (
@@ -666,6 +724,8 @@ function SortButton({
   onSelect,
   columnHeader,
   priority,
+  describedBy,
+  named,
 }: {
   children: React.ReactNode
   href?: string
@@ -676,6 +736,13 @@ function SortButton({
   columnHeader: string
   /** The column's place in a sort of several levels, if it has one. */
   priority?: number
+  /** The id of the column's description. */
+  describedBy?: string
+  /**
+   * The header's text is drawn by a renderer, so the button is named with the
+   * column's header rather than with whatever the renderer drew.
+   */
+  named?: boolean
 }) {
   if (href) {
     // The class goes on the anchor itself rather than on a span inside it, or
@@ -695,6 +762,7 @@ function SortButton({
       // Replaces the link's own text as its name, so the level has to be said here.
       "aria-label":
         priority === undefined ? `Sort by ${columnHeader}` : `Sort by ${columnHeader}, sort level ${String(priority)}`,
+      "aria-describedby": describedBy,
       draggable: false as const,
       children,
     }
@@ -702,7 +770,13 @@ function SortButton({
   }
 
   return (
-    <button type="button" className="tpz-th-button" onClick={(event) => onSelect(event.shiftKey)}>
+    <button
+      type="button"
+      className="tpz-th-button"
+      aria-label={named && columnHeader ? columnHeader : undefined}
+      aria-describedby={describedBy}
+      onClick={(event) => onSelect(event.shiftKey)}
+    >
       {children}
     </button>
   )
