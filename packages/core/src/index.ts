@@ -43,6 +43,7 @@ export type {
   ResolvedSelection,
   ResolvedSorting,
   RowHeight,
+  RowInfo,
   SelectOption,
   SelectionInput,
   SelectionOptions,
@@ -141,6 +142,7 @@ export {
   createState,
   focusCell,
   hideColumn,
+  isCollapsed,
   isExpanded,
   isFiltering,
   removeFilter,
@@ -150,6 +152,7 @@ export {
   resetView,
   selectRange,
   setColumnSearch,
+  setCollapsed,
   setDensity,
   setExpanded,
   setFilter,
@@ -164,6 +167,7 @@ export {
   setWidth,
   showColumn,
   toggleColumn,
+  toggleCollapsed,
   toggleExpanded,
   togglePin,
   toggleSelection,
@@ -173,6 +177,7 @@ export {
 export { resolveSelection, selectableIds } from "./selection.js"
 export { INTERACTIVE_SELECTOR, isInteractiveTarget } from "./interaction.js"
 export { expandableIds, isDetailOpen } from "./detail.js"
+export { getRowsWithChildren, parentIdsWithChildren } from "./children.js"
 export { entryCell, isNavigationKey, nextCell } from "./navigation.js"
 export {
   editValuesEqual,

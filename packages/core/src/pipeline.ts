@@ -11,6 +11,7 @@
  */
 
 import { cachedText, textCacheKey } from "./cell-text.js"
+import { getRowsWithChildren } from "./children.js"
 import { filterRows } from "./filter.js"
 import { type TypeRegistry } from "./registry.js"
 import type {
@@ -50,8 +51,14 @@ export type PipelineOptions<TRow, TNode = unknown> = {
    * decides which rows are on the page. Ignored when the row does not match.
    */
   reveal?: string
-  /** How rows are identified, for `reveal`. Defaults to `resolveRowId`'s rule. */
+  /** How rows are identified, for `reveal` and child rows. Defaults to `resolveRowId`'s rule. */
   getRowId?: GetRowId<TRow>
+  /**
+   * Which row a row belongs under, for a table with one level of child rows.
+   * With it, filtering, sorting and paging work on families — see
+   * `children.ts` — and the result carries `info` for each row.
+   */
+  getParentId?: (row: TRow) => string | null | undefined
 }
 
 /**
@@ -65,6 +72,13 @@ export function getRows<TRow extends AnyRow, TNode = unknown>(
   options: PipelineOptions<TRow, TNode>,
 ): TableRows<TRow> {
   const { rows, columns, state, types, format, server } = options
+
+  const getParentId = options.getParentId
+  if (getParentId) {
+    if (server && options.accumulate) warnIfNotAccumulating(rows.length, state)
+    if (server && !options.serverDistinct) warnAboutSetFilters(columns)
+    return getRowsWithChildren({ ...options, getParentId })
+  }
 
   if (server) {
     const total = options.total ?? rows.length

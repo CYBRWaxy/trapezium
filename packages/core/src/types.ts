@@ -540,6 +540,15 @@ export type TableState = {
    * Optional for the same reason as `expanded`.
    */
   focus?: CellFocus | null
+  /**
+   * Parents whose child rows are folded away — see the table's
+   * `getParentId`. Children are shown unless their parent is named here.
+   * Folding is presentation only: folded children still match, count towards
+   * nothing, and are exported under their parent.
+   *
+   * Optional for the same reason as `expanded`.
+   */
+  collapsed?: string[]
 }
 
 /**
@@ -603,6 +612,11 @@ export type TableRows<TRow = AnyRow> = {
   totalUnfiltered: number
   pageCount: number
   /**
+   * Where each of `rows` sits in a table with child rows, in the same order.
+   * Absent when the table has none.
+   */
+  info?: RowInfo[]
+  /**
    * The page these rows are, one-based: `state.page` held inside the page
    * count, or the page a revealed row is on. When it differs from
    * `state.page` the adapter writes it back, so the state says what is shown.
@@ -610,6 +624,22 @@ export type TableRows<TRow = AnyRow> = {
   page: number
   /** True when filters or search removed rows that otherwise exist. */
   filtered: boolean
+}
+
+/**
+ * A rendered row's place in a table with child rows — what an adapter needs
+ * to indent a child, give a parent its toggle, and quieten a parent shown
+ * only for the sake of a child.
+ */
+export type RowInfo = {
+  /** `0` for a parent or a row on its own, `1` for a child. */
+  depth: 0 | 1
+  /** A child's parent's id. */
+  parentId?: string
+  /** For a parent, how many of its children match — shown, or folded away. `0` otherwise. */
+  childCount: number
+  /** A parent shown only because one of its children matched the filters or the search. */
+  context: boolean
 }
 
 /**

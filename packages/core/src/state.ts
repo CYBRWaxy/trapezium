@@ -38,6 +38,7 @@ export const DEFAULT_STATE: TableState = {
   density: "normal",
   expanded: [],
   focus: null,
+  collapsed: [],
 }
 
 /** Fills in everything a caller left out. */
@@ -335,6 +336,37 @@ export function collapseAll(state: TableState): TableState {
 /** Whether a row's detail is open. */
 export function isExpanded(state: TableState, id: string): boolean {
   return (state.expanded ?? []).includes(id)
+}
+
+/**
+ * Folds a parent's child rows away, or unfolds them. Children are shown
+ * until their parent is folded.
+ */
+export function toggleCollapsed(state: TableState, parentId: string): TableState {
+  const collapsed = state.collapsed ?? []
+  return {
+    ...state,
+    collapsed: collapsed.includes(parentId) ? collapsed.filter((entry) => entry !== parentId) : [...collapsed, parentId],
+  }
+}
+
+/**
+ * Folds or unfolds the children of every parent named — "collapse all" is
+ * every parent with children, from `parentIdsWithChildren`; "expand all" is
+ * `setCollapsed(state, state.collapsed ?? [], false)`.
+ */
+export function setCollapsed(state: TableState, parentIds: readonly string[], collapsed: boolean): TableState {
+  const folded = new Set(state.collapsed ?? [])
+  for (const id of parentIds) {
+    if (collapsed) folded.add(id)
+    else folded.delete(id)
+  }
+  return { ...state, collapsed: [...folded] }
+}
+
+/** Whether a parent's children are folded away. */
+export function isCollapsed(state: TableState, parentId: string): boolean {
+  return (state.collapsed ?? []).includes(parentId)
 }
 
 /**

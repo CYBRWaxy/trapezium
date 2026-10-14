@@ -47,6 +47,7 @@ export const URL_KEYS = {
   widths: "w",
   expanded: "open",
   focus: "at",
+  collapsed: "fold",
 } as const
 
 export type UrlStateKey = keyof typeof URL_KEYS
@@ -58,9 +59,9 @@ export type UrlStateKey = keyof typeof URL_KEYS
  * and means nothing to whoever receives the link, and a dragged width is a
  * local preference rather than part of the view. Open detail rows are left out
  * too, because only some tables have them and a link that reopens somebody's
- * rows is a choice the page should make, and so is the active cell, which
- * moves with every arrow key. All four can be opted into with `include` — the
- * active cell is how a link says "this row".
+ * rows is a choice the page should make; so are folded child rows, and the
+ * active cell, which moves with every arrow key. All of them can be opted into
+ * with `include` — the active cell is how a link says "this row".
  */
 export const DEFAULT_URL_KEYS: UrlStateKey[] = [
   "sort",
@@ -77,7 +78,7 @@ export const DEFAULT_URL_KEYS: UrlStateKey[] = [
 export type UrlOptions = {
   /**
    * Which parts of the state to carry. Defaults to everything but selection,
-   * widths, open detail rows and the active cell.
+   * widths, open detail rows, folded child rows and the active cell.
    */
   include?: UrlStateKey[]
   /**
@@ -198,6 +199,10 @@ export function stateToSearchParams(
     write("expanded", state.expanded?.length ? state.expanded.map(encodeValue).join(LIST) : undefined)
   }
 
+  if (include.has("collapsed")) {
+    write("collapsed", state.collapsed?.length ? state.collapsed.map(encodeValue).join(LIST) : undefined)
+  }
+
   if (include.has("focus")) {
     const focus = state.focus
     write(
@@ -291,6 +296,9 @@ export function stateFromSearchParams(
 
   const expanded = read("expanded")
   if (expanded !== null) state.expanded = splitList(expanded).map(decodeValue)
+
+  const collapsed = read("collapsed")
+  if (collapsed !== null) state.collapsed = splitList(collapsed).map(decodeValue)
 
   const focus = read("focus")
   if (focus !== null) {
@@ -428,6 +436,7 @@ export function pickUrlState(state: TableState, options: UrlOptions = {}): Parti
     else if (key === "widths") picked.widths = state.widths
     else if (key === "expanded") picked.expanded = state.expanded ?? []
     else if (key === "focus") picked.focus = state.focus ?? null
+    else if (key === "collapsed") picked.collapsed = state.collapsed ?? []
   }
 
   return picked
