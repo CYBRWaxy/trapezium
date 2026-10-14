@@ -87,6 +87,9 @@ export {
   toggleCollapsed,
   applyRowMove,
   rangeSelection,
+  cellDisplayText,
+  exportCell,
+  toDelimitedText,
   copyText,
   downloadText,
 } from "@trapezium/core"
@@ -113,6 +116,7 @@ export type {
   PartialTableState,
   Pin,
   PinnedRows,
+  RowContextMenuInfo,
   RowHeight,
   RowInfo,
   RowMove,

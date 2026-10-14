@@ -43,6 +43,7 @@ export type {
   ResolvedHeaderSearch,
   ResolvedSelection,
   ResolvedSorting,
+  RowContextMenuInfo,
   RowHeight,
   RowInfo,
   SelectOption,
@@ -184,6 +185,7 @@ export { INTERACTIVE_SELECTOR, isInteractiveTarget } from "./interaction.js"
 export { expandableIds, isDetailOpen } from "./detail.js"
 export { getRowsWithChildren, parentIdsWithChildren } from "./children.js"
 export { pinnedOffset, pinnedRowId } from "./pinned.js"
+export { cellDisplayText } from "./display.js"
 export { applyRowMove, canReorderRows, moveRowTo, stepRow } from "./reorder.js"
 export type { RowMove, RowReorderOptions } from "./reorder.js"
 export { createEdgeScroller, startRowDrag } from "./drag.js"

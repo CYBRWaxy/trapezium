@@ -29,6 +29,7 @@ import {
   INTERACTIVE_SELECTOR,
   isDetailOpen,
   isInteractiveTarget,
+  cellDisplayText,
   clearSelection,
   rangeSelection,
   startDragSelect,
@@ -109,6 +110,7 @@ import {
   type ResolvedColumn,
   type ResolvedSelection,
   type RowHeight,
+  type RowContextMenuInfo,
   type RowInfo,
   type RowMove,
   type RowReorderOptions,
@@ -246,6 +248,12 @@ export type TableOptions<TRow extends AnyRow = AnyRow> = {
    * a button, an input, a label or a menu inside the row is left to itself.
    */
   onRowClick?: (row: TRow, event: MouseEvent) => void
+  /**
+   * Fires when a context menu is asked for on a row, with the row and the cell
+   * under the pointer — its column and the text it shows. Call
+   * `event.preventDefault()` to keep the browser's own menu closed.
+   */
+  onRowContextMenu?: (row: TRow, event: MouseEvent, info: RowContextMenuInfo<TRow, Node | string>) => void
   /** Extra class names per row. With child rows, `info` says where the row sits. */
   rowClassName?: (row: TRow, index: number, info?: RowInfo) => string | undefined
 
@@ -1297,6 +1305,22 @@ export function createTable<TRow extends AnyRow>(
       "data-pinned": pinned?.side,
     })
     if (pinned) tr.style.setProperty("--tpz-pinned-offset", pinned.offset)
+
+    // Read from the settings when it happens, so a handler passed later is the one called.
+    tr.addEventListener("contextmenu", (event) => {
+      const handler = settings.onRowContextMenu
+      if (!handler) return
+      const cell = event.target instanceof Element ? event.target.closest<HTMLElement>("td[data-key]") : null
+      const key = cell && tr.contains(cell) ? cell.dataset["key"] : undefined
+      const column = headerColumns.find((entry) => entry.key === key)
+      handler(row, event, {
+        rowId: id,
+        columnKey: column ? column.key : null,
+        column,
+        text: column ? cellDisplayText(row, column, { types: registry(), format: formatting(), rowId: id }) : null,
+        ...(pinned ? { pinned: pinned.side } : {}),
+      })
+    })
 
     // Only the active cell is in the tab order; the rest are reached by arrow.
     const entry = build.entry
@@ -4204,6 +4228,10 @@ const PASSIVE_OPTIONS: ReadonlySet<string> = new Set([
   // and whether there is one at all is part of the shape. The Vue adapter
   // hands over a fresh function on every change, so identity means nothing here.
   "onRowClick",
+  // Likewise read when they happen, and drawing nothing of their own.
+  "onRowContextMenu",
+  "onCellEdit",
+  "editTrigger",
 ])
 
 /** Whether an element has the kind of focus a keyboard gives, as far as the browser will say. */

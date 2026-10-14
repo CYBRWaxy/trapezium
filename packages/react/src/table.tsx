@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
   INTERACTIVE_SELECTOR,
+  cellDisplayText,
   warmSearchWhenIdle,
   clearSelection,
   rangeSelection,
@@ -1016,6 +1017,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
             pinEdges={pinEdges}
             fit={rowHeightMode === "exact"}
             onToggle={toggleRow}
+            onContextMenu={props.onRowContextMenu ? handleContextMenu : undefined}
             linkComponent={Link}
             expander={detail ? { expandable: false, expanded: false, detailId: "" } : undefined}
             activeKey={entry ? (entry.rowId === id ? entry.key : "") : undefined}
@@ -1074,6 +1076,31 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
 
   const handleRowClick = useCallback((row: TRow, event: React.MouseEvent) => {
     clickRef.current?.(row, event)
+  }, [])
+
+  /*
+    A context menu on a row hands over the row and the cell under the pointer,
+    read from the cell's key — the column, and the text it shows — so nobody
+    has to search the DOM for them. Read through a ref like the row click, for
+    the same reason.
+  */
+  const contextMenuRef = useRef({ handler: props.onRowContextMenu, columns, types, format })
+  contextMenuRef.current = { handler: props.onRowContextMenu, columns, types, format }
+
+  const handleContextMenu = useCallback((row: TRow, id: string, event: React.MouseEvent<HTMLTableRowElement>) => {
+    const { handler, columns: shown, types: registry, format: formatting } = contextMenuRef.current
+    if (!handler) return
+    const cell = event.target instanceof Element ? event.target.closest<HTMLElement>("td[data-key]") : null
+    const key = cell && event.currentTarget.contains(cell) ? cell.dataset["key"] : undefined
+    const column = shown.find((entry) => entry.key === key)
+    const pinned = event.currentTarget.dataset["pinned"]
+    handler(row, event, {
+      rowId: id,
+      columnKey: column ? column.key : null,
+      column,
+      text: column ? cellDisplayText(row, column, { types: registry, format: formatting, rowId: id }) : null,
+      ...(pinned === "top" || pinned === "bottom" ? { pinned } : {}),
+    })
   }, [])
 
   /*
@@ -1383,6 +1410,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                     pinEdges={pinEdges}
                     fit={rowHeightMode === "exact"}
                     onRowClick={onRowClick ? handleRowClick : undefined}
+                    onContextMenu={props.onRowContextMenu ? handleContextMenu : undefined}
                     onToggle={toggleRow}
                     linkComponent={Link}
                     expander={detail ? { expandable, expanded: open, detailId } : undefined}

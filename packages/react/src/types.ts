@@ -16,6 +16,7 @@ import type {
   ResolvedColumn,
   RowHeight,
   RowInfo,
+  RowContextMenuInfo,
   RowReorderOptions,
   SelectionOptions,
   ServerSource,
@@ -350,6 +351,14 @@ export type TableProps<TRow extends AnyRow = AnyRow> = {
   rowHref?: (row: TRow) => string
   /** Fires on a click anywhere in the row that was not a control. */
   onRowClick?: (row: TRow, event: React.MouseEvent) => void
+  /**
+   * Fires when a context menu is asked for on a row — a right click, a long
+   * press, the menu key — with the row and the cell under the pointer: its
+   * column, and the text it shows (`cellDisplayText`). The browser's own menu
+   * still opens unless you call `event.preventDefault()`, so open yours and
+   * prevent it in the same handler.
+   */
+  onRowContextMenu?: (row: TRow, event: React.MouseEvent, info: RowContextMenuInfo<TRow, ReactNode>) => void
   /**
    * Extra class names per row — a tone for overdue, archived, unread. With
    * child rows, `info` says where the row sits: its depth, its parent, how

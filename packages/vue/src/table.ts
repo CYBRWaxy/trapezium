@@ -31,6 +31,7 @@ import type {
   PartialTableState,
   PinnedRows,
   RowHeight,
+  RowContextMenuInfo,
   RowInfo,
   RowReorderOptions,
   SelectionInput,
@@ -224,6 +225,12 @@ export const Table = defineComponent({
     selectionChange: (ids: string[], rows: AnyRow[]) => true,
     rowClick: (row: AnyRow, event: MouseEvent) => true,
     /**
+     * A context menu asked for on a row, with the cell under the pointer — its
+     * column and the text it shows. Call `event.preventDefault()` to keep the
+     * browser's own menu closed.
+     */
+    rowContextMenu: (row: AnyRow, event: MouseEvent, info: RowContextMenuInfo<AnyRow, Node | string>) => true,
+    /**
      * A plain click on one of the table's links, with the URL it points at.
      * Listening prevents the browser's navigation; hand the URL to the router.
      */
@@ -407,6 +414,7 @@ export const Table = defineComponent({
       onStateChange: listensForState() ? (state) => emit("update:state", state) : undefined,
       onSelectionChange: (ids, rows) => emit("selectionChange", ids, rows),
       onRowClick: listensForRowClick() ? (row, event) => emit("rowClick", row, event) : undefined,
+      onRowContextMenu: (row, event, info) => emit("rowContextMenu", row, event, info),
       onNavigate: listensForNavigate() ? (href, event) => emit("navigate", href, event) : undefined,
     })
 

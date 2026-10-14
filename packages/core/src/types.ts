@@ -288,6 +288,22 @@ export type CellEdit<TRow = AnyRow> = {
   pinned?: "top" | "bottom"
 }
 
+/**
+ * Where a context menu was opened: the row, and the cell under the pointer —
+ * what an `onRowContextMenu` handler needs to build "Copy cell", "Open",
+ * "Delete" without searching the DOM for them.
+ */
+export type RowContextMenuInfo<TRow = AnyRow, TNode = unknown> = {
+  rowId: string
+  /** The column under the pointer, or `null` over the table's own columns (checkbox, expander, handle). */
+  columnKey: string | null
+  column: ResolvedColumn<TRow, TNode> | undefined
+  /** The text that cell shows — `cellDisplayText` — or `null` when no column is under the pointer. */
+  text: string | null
+  /** Set when the row is one of `pinnedRows`. */
+  pinned?: "top" | "bottom"
+}
+
 /** What a header renderer is given. */
 export type HeaderContext<TRow = AnyRow, TNode = unknown> = {
   column: ResolvedColumn<TRow, TNode>
