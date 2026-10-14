@@ -264,6 +264,23 @@ export type TableProps<TRow extends AnyRow = AnyRow> = {
    */
   detail?: DetailOptions<TRow, ReactNode>
 
+  /**
+   * Cells the keyboard can move between.
+   *
+   * The table becomes one stop in the tab order — the active cell — and the
+   * arrow keys, Home, End (with Control for the whole table), Page Up and Page
+   * Down move from cell to cell. Enter or F2 goes into a cell's link or
+   * button, Escape comes back out, and Space or Enter works the checkbox and
+   * the expander in their columns. The active cell is `state.focus`, so it can
+   * also be set from outside: `focusCell(state, rowId, key)` scrolls the table
+   * to that cell, highlights its row and puts the keyboard on it.
+   *
+   * Off by default, because it turns the table into a `role="grid"`, which a
+   * screen reader works differently from a table. Switched on automatically
+   * when a column is `editable`, since editing needs it.
+   */
+  cellNavigation?: boolean
+
   /** Makes each row a link. The leading cell becomes an anchor. */
   rowHref?: (row: TRow) => string
   /** Fires on a click anywhere in the row that was not a control. */

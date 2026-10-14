@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
   DEFAULT_FORMAT,
   DEFAULT_STATE,
@@ -173,6 +173,17 @@ export function useTable<TRow extends AnyRow>(props: TableProps<TRow>) {
   // one with the next.
   const accumulate = pagination?.mode === "infinite" || pagination?.mode === "loadMore"
 
+  /*
+    A row made active from outside — `focusCell` from a banner's link — is
+    brought onto the page it is on. Only when the active row changes: once it
+    has been revealed, paging away from it must not drag the table back.
+    The last row revealed is remembered in an effect rather than during
+    render, so a render React throws away and redoes still reveals.
+  */
+  const focusRow = state.focus?.rowId
+  const revealed = useRef<string | undefined>(undefined)
+  const reveal = !server && focusRow !== undefined && focusRow !== revealed.current ? focusRow : undefined
+
   const result = useMemo(
     () =>
       getRows<TRow, React.ReactNode>({
@@ -185,9 +196,26 @@ export function useTable<TRow extends AnyRow>(props: TableProps<TRow>) {
         serverDistinct: typeof server === "object" && Boolean(server.distinct),
         total,
         accumulate,
+        reveal: pagination ? reveal : undefined,
+        getRowId,
       }),
-    [data, visible, state, types, format, server, total, accumulate, pagination],
+    [data, visible, state, types, format, server, total, accumulate, pagination, reveal, getRowId],
   )
+
+  /*
+    When a row was revealed, the page on screen is its page, and everything
+    that reads the state — the pagination, the header links, the next
+    transition — has to say so. The state handed out says it from this render
+    on, which is what a server renders; a layout effect then makes it the
+    table's own and tells the caller, before anything is painted.
+  */
+  const viewState: TableState = pagination && result.page !== state.page ? { ...state, page: result.page } : state
+  latest.current = viewState
+
+  useLayoutEffect(() => {
+    revealed.current = focusRow
+    if (viewState !== state) update(viewState)
+  }, [focusRow, viewState, state, update])
 
   const rowIds = useMemo(
     () => result.rows.map((row, index) => resolveRowId(row, index, getRowId)),
@@ -208,6 +236,8 @@ export function useTable<TRow extends AnyRow>(props: TableProps<TRow>) {
     rowIds,
     /** Matching rows across every page. */
     total: result.total,
+    /** The page on screen — `state.page`, or the page a revealed row is on. */
+    page: viewState.page,
     pageCount: result.pageCount,
     /** True when filters or search are hiding rows that exist. */
     filtered: result.filtered,
@@ -216,7 +246,7 @@ export function useTable<TRow extends AnyRow>(props: TableProps<TRow>) {
     hiddenColumns: hidden as TableColumn<TRow>[],
     allColumns: all as TableColumn<TRow>[],
 
-    state,
+    state: viewState,
     update,
     patch,
     types,

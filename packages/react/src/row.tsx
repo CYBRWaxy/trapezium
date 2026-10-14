@@ -59,6 +59,14 @@ export type RowProps<TRow extends AnyRow> = {
   onToggleExpanded?: (id: string) => void
   /** A click anywhere on the row toggles its detail, not only the expander. */
   toggleOnClick?: boolean
+  /**
+   * With cell navigation on, the key of this row's cell that is the table's
+   * one stop in the tab order — `""` for a row that holds none of it.
+   * Absent when cell navigation is off, and no cell is focusable at all.
+   */
+  activeKey?: string
+  /** This row is the active one — `state.focus` names it. Highlighted. */
+  focused?: boolean
 }
 
 function RowInner<TRow extends AnyRow>({
@@ -83,7 +91,14 @@ function RowInner<TRow extends AnyRow>({
   expander,
   onToggleExpanded,
   toggleOnClick,
+  activeKey,
+  focused,
 }: RowProps<TRow>) {
+  // Only the active cell is in the tab order; the rest are reached by arrow.
+  const tabIndex = (key: string) => (activeKey === undefined ? undefined : activeKey === key ? 0 : -1)
+  // The table's own controls are worked from their cell, so they leave the tab order to it.
+  const controlTabIndex = activeKey === undefined ? undefined : -1
+
   const togglesDetail = toggleOnClick === true && expander?.expandable === true
   const clickable = onRowClick !== undefined || togglesDetail
 
@@ -93,6 +108,8 @@ function RowInner<TRow extends AnyRow>({
       data-selected={selected ? "true" : undefined}
       data-clickable={clickable ? "true" : undefined}
       data-expanded={expander?.expanded ? "true" : undefined}
+      data-focused={focused ? "true" : undefined}
+      data-row-id={id}
       onClick={
         clickable
           ? (event) => {
@@ -109,6 +126,7 @@ function RowInner<TRow extends AnyRow>({
           className={classes("selectCell")}
           data-pin="start"
           data-key="__select"
+          tabIndex={tabIndex("__select")}
           style={{ left: pinOffsets["__select"] ?? 0 }}
         >
           <input
@@ -116,6 +134,7 @@ function RowInner<TRow extends AnyRow>({
             className="tpz-checkbox"
             checked={selected}
             disabled={!selectable}
+            tabIndex={controlTabIndex}
             aria-label={`Select row ${String(rowIndex + 1)}`}
             onClick={(event) => event.stopPropagation()}
             onChange={(event) => onToggle(id, event)}
@@ -128,12 +147,14 @@ function RowInner<TRow extends AnyRow>({
           className={classes("expandCell")}
           data-pin="start"
           data-key="__expand"
+          tabIndex={tabIndex("__expand")}
           style={{ left: pinOffsets["__expand"] ?? 0 }}
         >
           {expander.expandable && (
             <button
               type="button"
               className="tpz-expander"
+              tabIndex={controlTabIndex}
               aria-expanded={expander.expanded}
               aria-controls={expander.expanded ? expander.detailId : undefined}
               aria-label={`${expander.expanded ? "Hide" : "Show"} details for row ${String(rowIndex + 1)}`}
@@ -182,6 +203,7 @@ function RowInner<TRow extends AnyRow>({
             // Carries the header into the cell so the card layout
             // can label it in CSS, with no second render.
             data-label={column.header}
+            tabIndex={tabIndex(column.key)}
             style={{
               ...(column.pin === "start" ? { left: pinOffsets[column.key] } : {}),
               ...(column.pin === "end" ? { right: pinOffsets[column.key] } : {}),

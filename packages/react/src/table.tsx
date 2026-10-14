@@ -1,6 +1,11 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
+  INTERACTIVE_SELECTOR,
   canResetSort,
+  entryCell,
+  focusCell,
+  isNavigationKey,
+  nextCell,
   expandableIds as expandableIdsOf,
   isDetailOpen,
   setExpanded,
@@ -21,6 +26,7 @@ import {
   toSelectOptions,
   toggleSelection,
   type AnyRow,
+  type CellFocus,
   type SelectOption,
   type TableState,
 } from "@trapezium/core"
@@ -346,6 +352,134 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
     apply((current) => toggleSelection(current, id, mode === "single"))
   }, [])
 
+  /* ── Cell navigation ───────────────────────────────────────────────────── */
+
+  const navigable = props.cellNavigation === true
+
+  /*
+    The grid the keyboard moves across: every row a person can land on, and
+    every column including the table's own. The entry cell is the one in the
+    tab order — the active cell when it is on screen, the first cell otherwise.
+  */
+  const navColumns = useMemo(
+    () => [...(selection ? ["__select"] : []), ...(detail ? ["__expand"] : []), ...visibleKeys],
+    [selection, detail, visibleKeys],
+  )
+  const grid = useMemo(() => ({ rows: rowIds, columns: navColumns }), [rowIds, navColumns])
+  const entry = navigable ? entryCell(grid, state.focus) : undefined
+  const tableRef = useRef<HTMLTableElement | null>(null)
+
+  /** The `<td>` for a cell, found by attribute so a key with a dot or a quote in it is no trouble. */
+  const cellElement = useCallback((rowId: string, key: string | undefined): HTMLElement | undefined => {
+    const table = tableRef.current
+    if (!table) return undefined
+    const row = [...table.querySelectorAll<HTMLElement>("tr[data-row-id]")].find((tr) => tr.dataset["rowId"] === rowId)
+    if (!row) return undefined
+    if (key === undefined) return row
+    return [...row.children].find(
+      (cell): cell is HTMLElement => cell instanceof HTMLElement && cell.dataset["key"] === key,
+    )
+  }, [])
+
+  /*
+    A cell taking the focus — by click, by Tab, by an arrow key below — makes
+    it the active one. The state follows the focus rather than the other way
+    round, so the browser's own focus handling is never second-guessed.
+  */
+  const onGridFocus = (event: React.FocusEvent<HTMLTableElement>) => {
+    if (!navigable) return
+    const cell = event.target
+    if (!(cell instanceof HTMLElement) || cell.tagName !== "TD" || !cell.hasAttribute("tabindex")) return
+    const rowId = cell.parentElement?.dataset["rowId"]
+    const key = cell.dataset["key"]
+    if (rowId === undefined || key === undefined) return
+    if (focusCell(latestState.current, rowId, key) === latestState.current) return
+    update((current) => focusCell(current, rowId, key))
+  }
+
+  const onGridKeyDown = (event: React.KeyboardEvent<HTMLTableElement>) => {
+    if (!navigable || event.defaultPrevented) return
+    const target = event.target
+    if (!(target instanceof HTMLElement)) return
+
+    const cell = target.closest<HTMLElement>("td[tabindex]")
+    if (!cell || !tableRef.current?.contains(cell)) return
+
+    // From a control inside a cell, Escape goes back to the cell.
+    if (cell !== target) {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        cell.focus()
+      }
+      return
+    }
+
+    const rowId = cell.parentElement?.dataset["rowId"]
+    const key = cell.dataset["key"]
+    if (rowId === undefined || key === undefined) return
+
+    if (isNavigationKey(event.key) && !event.altKey && !event.shiftKey) {
+      const next = nextCell(grid, { rowId, key }, event.key, {
+        ctrlKey: event.ctrlKey || event.metaKey,
+        pageRows: pageRowsFrom(cell),
+        rtl: getComputedStyle(cell).direction === "rtl",
+      })
+      event.preventDefault()
+      if (!next) return
+      const element = cellElement(next.rowId, next.key)
+      element?.focus({ preventScroll: true })
+      element?.scrollIntoView?.({ block: "nearest", inline: "nearest" })
+      return
+    }
+
+    if (event.key === "Enter" || event.key === "F2" || event.key === " ") {
+      // The table's own columns are worked from their cell, as a checkbox and a button would be.
+      const own = cell.querySelector<HTMLElement>("input.tpz-checkbox, button.tpz-expander")
+      if ((key === "__select" || key === "__expand") && own) {
+        event.preventDefault()
+        own.click()
+        return
+      }
+
+      // Anywhere else Enter goes into the cell's link or button, and Escape comes back out.
+      if (event.key !== " ") {
+        const control = cell.querySelector<HTMLElement>(INTERACTIVE_SELECTOR)
+        if (control) {
+          event.preventDefault()
+          control.focus()
+        }
+      }
+    }
+  }
+
+  /*
+    The active cell set from outside — `focusCell` from a link in a banner —
+    is scrolled to and, when the cells can take the focus, focused. Compared
+    by what it says rather than by identity, so a parent that hands over a new
+    object with the same cell on every render does not keep moving the page.
+    On the first render nothing is focused: the page has only just arrived,
+    and taking the focus away from wherever the browser put it would be rude.
+  */
+  const focusSignature = state.focus ? JSON.stringify([state.focus.rowId, state.focus.key ?? null, state.focus.align ?? null]) : ""
+  const appliedFocus = useRef<string | undefined>(undefined)
+
+  useLayoutEffect(() => {
+    const first = appliedFocus.current === undefined
+    if (!first && appliedFocus.current === focusSignature) return
+    appliedFocus.current = focusSignature
+
+    const focus: CellFocus | null | undefined = latestState.current.focus
+    if (!focus) return
+
+    const target = navigable ? (entry && entry.rowId === focus.rowId ? cellElement(entry.rowId, entry.key) : undefined) : cellElement(focus.rowId, undefined)
+    if (!target) return
+
+    if (target.ownerDocument.activeElement !== target) {
+      target.scrollIntoView?.({ block: focus.align ?? "nearest", inline: "nearest" })
+      if (!first && navigable) target.focus({ preventScroll: true })
+    }
+  }, [focusSignature, navigable, entry, cellElement])
+
   /* ── Detail rows ───────────────────────────────────────────────────────── */
 
   const expandableIds = useMemo(() => expandableIdsOf(rows, rowIds, detail), [rows, rowIds, detail])
@@ -503,7 +637,15 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
         />
 
         <div className={classes("scroll")}>
-          <table className={classes("table")} aria-label={props["aria-label"]}>
+          <table
+            ref={tableRef}
+            className={classes("table")}
+            aria-label={props["aria-label"]}
+            role={navigable ? "grid" : undefined}
+            aria-readonly={navigable ? true : undefined}
+            onKeyDown={navigable ? onGridKeyDown : undefined}
+            onFocus={navigable ? onGridFocus : undefined}
+          >
             {caption && <caption className="tpz-caption">{caption}</caption>}
 
             <thead className={classes("thead")} ref={headRef}>
@@ -648,6 +790,8 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                     expander={detail ? { expandable, expanded: open, detailId } : undefined}
                     onToggleExpanded={detail ? toggleDetail : undefined}
                     toggleOnClick={detail?.toggleOnRowClick}
+                    activeKey={entry ? (entry.rowId === id ? entry.key : "") : undefined}
+                    focused={state.focus?.rowId === id}
                   />
                   {mountDetail && detail && (
                     <DetailRow
@@ -760,6 +904,19 @@ function isPinEdge(columns: Array<{ key: string; pin?: "start" | "end" }>, key: 
   const starts = columns.filter((column) => column.pin === "start")
   const ends = columns.filter((column) => column.pin === "end")
   return starts[starts.length - 1]?.key === key || ends[0]?.key === key
+}
+
+/**
+ * How many rows Page Up and Page Down move: as many as the scroll area shows,
+ * less one so the row the keyboard was on stays in sight. The page's own
+ * height stands in when the table grows with the page rather than scrolling.
+ */
+function pageRowsFrom(cell: HTMLElement): number {
+  const rowHeight = cell.getBoundingClientRect().height || 32
+  const scroll = cell.closest<HTMLElement>(".tpz-scroll")
+  const scrolls = scroll !== null && scroll.scrollHeight > scroll.clientHeight + 1
+  const height = scrolls ? scroll.clientHeight : cell.ownerDocument.defaultView?.innerHeight ?? 0
+  return Math.max(1, Math.floor(height / rowHeight) - 1)
 }
 
 function normaliseSearch(option: TableProps<AnyRow>["search"]): SearchOptions | undefined {
