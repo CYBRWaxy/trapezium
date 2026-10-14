@@ -9,7 +9,12 @@ import {
   defaultTypeRegistry,
   distinctValues,
   downloadText,
+  entryCell,
   expandableIds,
+  focusCell,
+  isNavigationKey,
+  nextCell,
+  INTERACTIVE_SELECTOR,
   isDetailOpen,
   isInteractiveTarget,
   setExpanded,
@@ -225,6 +230,17 @@ export type TableOptions<TRow extends AnyRow = AnyRow> = {
    */
   detail?: DetailOptions<TRow, Node | string>
 
+  /**
+   * Cells the keyboard can move between: the table is one stop in the tab
+   * order, and the arrows, Home, End (with Control for the whole table), Page
+   * Up and Page Down move from cell to cell. Enter or F2 goes into a cell's
+   * link or button and Escape comes back; Space or Enter works the checkbox
+   * and the expander. The active cell is `state.focus`, so setting it from
+   * outside scrolls to that cell and puts the keyboard there. Off by default,
+   * because it makes the table a `role="grid"`; on when a column is editable.
+   */
+  cellNavigation?: boolean
+
   /** Replaces the "nothing here" state. */
   emptyState?: Node | string
   /** Text for the default empty state. */
@@ -368,6 +384,17 @@ export function createTable<TRow extends AnyRow>(
   let generation = 0
   let selectAllBox: HTMLInputElement | undefined
   let expandAllButton: HTMLButtonElement | undefined
+  /** The columns the keyboard moves across, the table's own first, as last rendered. */
+  let navColumns: string[] = []
+  /** The one cell in the tab order, as last rendered, and the row last drawn as active. */
+  let renderedEntry: HTMLElement | undefined
+  let renderedFocusRow: string | undefined
+  /** The active row last brought onto the page, so it is brought there once, not every render. */
+  let lastRevealed: string | undefined
+  /** What `state.focus` said when it was last acted on — see `applyFocus`. */
+  let appliedFocus: string | undefined
+  /** A rebuild took the focus out of the document with the rows it was in. */
+  let restoreFocus = false
 
   const root = el("div", { class: "tpz" })
   const frame = el("div", { class: "tpz-frame" })
@@ -679,7 +706,7 @@ export function createTable<TRow extends AnyRow>(
     return { ...DEFAULT_FORMAT, ...settings.format }
   }
 
-  function current() {
+  function current(reveal?: string) {
     const pagination = paginationOf(settings)
     const { visible, hidden } = resolveColumns<TRow, Node | string>({
       columns: settings.columns,
@@ -702,6 +729,8 @@ export function createTable<TRow extends AnyRow>(
       serverDistinct: Boolean(source()?.distinct),
       total: settings.total,
       accumulate: pagination?.mode === "infinite" || pagination?.mode === "loadMore",
+      reveal: pagination ? reveal : undefined,
+      getRowId: settings.getRowId,
     })
 
     return { columns: visible, hidden, pagination, ...result }
@@ -767,8 +796,37 @@ export function createTable<TRow extends AnyRow>(
 
   /* ── Render ────────────────────────────────────────────────────────────── */
 
-  function render() {
-    const { columns, hidden, rows, total, pageCount, filtered, pagination } = current()
+  /** Whether the keyboard moves between cells. */
+  function navigable(): boolean {
+    return settings.cellNavigation === true
+  }
+
+  /**
+   * Draws the table, and says whether doing so moved the page — to bring an
+   * active row set from outside onto the page it is on — so that a caller who
+   * is not already reporting the state can report it.
+   */
+  function render(): boolean {
+    /*
+      Only when the active row has changed: once revealed, paging away from it
+      must not drag the table back.
+    */
+    const focusRow = state.focus?.rowId
+    const reveal = !settings.server && focusRow !== undefined && focusRow !== lastRevealed ? focusRow : undefined
+    lastRevealed = focusRow
+
+    const revealed = renderView(reveal)
+    syncFocus()
+    applyFocus()
+    return revealed
+  }
+
+  function renderView(reveal: string | undefined): boolean {
+    const { columns, hidden, rows, total, pageCount, filtered, pagination, page } = current(reveal)
+
+    // The page shown is the revealed row's, so the state says so from here on.
+    const revealed = pagination !== undefined && page !== state.page
+    if (revealed) state = { ...state, page }
     const types = registry()
     const format = formatting()
     const cls = classes()
@@ -822,6 +880,14 @@ export function createTable<TRow extends AnyRow>(
     if (settings.ariaLabel) table.setAttribute("aria-label", settings.ariaLabel)
     else table.removeAttribute("aria-label")
 
+    if (navigable()) {
+      table.setAttribute("role", "grid")
+      table.setAttribute("aria-readonly", "true")
+    } else {
+      table.removeAttribute("role")
+      table.removeAttribute("aria-readonly")
+    }
+
     if (settings.caption) {
       caption.textContent = settings.caption
       if (!table.contains(caption)) table.prepend(caption)
@@ -850,7 +916,17 @@ export function createTable<TRow extends AnyRow>(
     toolbar.style.display = !hasControls && state.filters.length === 0 ? "none" : ""
 
     const shape = shapeOf(columns, selection)
-    const build: RowBuild = { columns, types, format, cls, selection, pinEdges: pinEdgesOf(columns), columnCount }
+    navColumns = [...(selectionMode ? ["__select"] : []), ...(settings.detail ? ["__expand"] : []), ...columns.map((column) => column.key)]
+    const build: RowBuild = {
+      columns,
+      types,
+      format,
+      cls,
+      selection,
+      pinEdges: pinEdgesOf(columns),
+      columnCount,
+      entry: navigable() ? entryCell({ rows: rowIds, columns: navColumns }, state.focus) : undefined,
+    }
 
     /*
       The cheap path.
@@ -899,7 +975,7 @@ export function createTable<TRow extends AnyRow>(
       syncDetails(build)
       renderPagination(pagination, total, pageCount, rows.length)
       void hidden
-      return
+      return revealed
     }
 
     renderHeader(columns, cls, selectionMode)
@@ -968,6 +1044,8 @@ export function createTable<TRow extends AnyRow>(
       )
     }
 
+    // The rows are about to be replaced; if the focus is in one, it goes back to the active cell after.
+    if (body.contains(currentDocument().activeElement)) restoreFocus = true
     fill(body, rendered)
 
     renderedRows = rows
@@ -982,6 +1060,7 @@ export function createTable<TRow extends AnyRow>(
     applyPinOffsets()
     renderPagination(pagination, total, pageCount, rows.length)
     void hidden
+    return revealed
   }
 
   /** Everything a row is built from that is not the row itself. */
@@ -995,6 +1074,8 @@ export function createTable<TRow extends AnyRow>(
     pinEdges: Set<string>
     /** Every column a full-width row spans, the table's own included. */
     columnCount: number
+    /** With cell navigation, the cell in the tab order; absent when the keyboard does not move between cells. */
+    entry: { rowId: string; key: string } | undefined
   }
 
   /** One row, built the same way whether the body is being filled or extended. */
@@ -1012,7 +1093,13 @@ export function createTable<TRow extends AnyRow>(
       "data-selected": selected ? "true" : undefined,
       "data-clickable": settings.onRowClick || togglesDetail ? "true" : undefined,
       "data-expanded": open ? "true" : undefined,
+      "data-focused": state.focus?.rowId === id ? "true" : undefined,
+      "data-row-id": id,
     })
+
+    // Only the active cell is in the tab order; the rest are reached by arrow.
+    const entry = build.entry
+    const tabindex = (key: string) => (entry === undefined ? undefined : entry.rowId === id && entry.key === key ? 0 : -1)
 
     if (settings.onRowClick || togglesDetail) {
       tr.addEventListener("click", (event) => {
@@ -1057,17 +1144,29 @@ export function createTable<TRow extends AnyRow>(
         lastToggled = id
         update(toggleSelection(state, id, selectionMode === "single"))
       })
-      tr.append(el("td", { class: cls("selectCell"), "data-pin": "start", "data-key": "__select" }, [box]))
+      // The table's own controls are worked from their cell, so they leave the tab order to it.
+      if (entry) box.tabIndex = -1
+      tr.append(
+        el("td", { class: cls("selectCell"), "data-pin": "start", "data-key": "__select", tabindex: tabindex("__select") }, [
+          box,
+        ]),
+      )
     }
 
     if (detail) {
-      const cell = el("td", { class: cls("expandCell"), "data-pin": "start", "data-key": "__expand" })
+      const cell = el("td", {
+        class: cls("expandCell"),
+        "data-pin": "start",
+        "data-key": "__expand",
+        tabindex: tabindex("__expand"),
+      })
       if (expandable) {
         const button = el(
           "button",
           {
             type: "button",
             class: "tpz-expander",
+            tabindex: entry ? -1 : undefined,
             "aria-expanded": open ? "true" : "false",
             "aria-controls": open ? detailId(id) : undefined,
             "aria-label": `${open ? "Hide" : "Show"} details for row ${String(index + 1)}`,
@@ -1095,6 +1194,7 @@ export function createTable<TRow extends AnyRow>(
         "data-pin-edge": pinEdges.has(column.key) ? column.pin : undefined,
         "data-key": column.key,
         "data-label": column.header,
+        tabindex: tabindex(column.key),
       })
       if (column.width) cell.style.width = `${String(column.width)}px`
 
@@ -1145,6 +1245,151 @@ export function createTable<TRow extends AnyRow>(
     }
     return true
   }
+
+  /** The rendered `<td>` for a cell, or the `<tr>` when no column is named. */
+  function cellElement(rowId: string, key: string | undefined): HTMLElement | undefined {
+    const index = renderedIds.indexOf(rowId)
+    const row = renderedNodes[index]
+    if (!row) return undefined
+    if (key === undefined) return row
+    // By attribute rather than by building a selector from the key, which may hold a dot or a quote;
+    // and without `instanceof`, which a server's elements are not.
+    return [...row.querySelectorAll<HTMLElement>("td[data-key]")].find(
+      (cell) => cell.parentNode === row && cell.dataset["key"] === key,
+    )
+  }
+
+  /**
+   * Brings the active row's highlight and the one tab stop into line with the
+   * state, touching only the cells and rows whose answer changed — moving the
+   * keyboard one cell must not rebuild a table to do it.
+   */
+  function syncFocus() {
+    const focusRow = state.focus?.rowId
+    if (focusRow !== renderedFocusRow) {
+      for (const [index, id] of renderedIds.entries()) {
+        const tr = renderedNodes[index]
+        if (!tr) continue
+        if (id === focusRow) tr.dataset["focused"] = "true"
+        else if (id === renderedFocusRow) delete tr.dataset["focused"]
+      }
+      renderedFocusRow = focusRow
+    }
+
+    if (!navigable()) {
+      renderedEntry = undefined
+      return
+    }
+
+    const entry = entryCell({ rows: renderedIds, columns: navColumns }, state.focus)
+    const cell = entry ? cellElement(entry.rowId, entry.key) : undefined
+    if (cell !== renderedEntry || cell?.getAttribute("tabindex") !== "0") {
+      for (const stop of body.querySelectorAll<HTMLElement>('td[tabindex="0"]')) {
+        if (stop !== cell) stop.setAttribute("tabindex", "-1")
+      }
+      cell?.setAttribute("tabindex", "0")
+      renderedEntry = cell
+    }
+  }
+
+  /**
+   * Acts on an active cell set from outside: scrolls to it and, with cell
+   * navigation on, puts the focus there. Compared by what it says, so a
+   * wrapper handing over a fresh object with the same cell does not keep
+   * moving the page. The first render only scrolls — the page has just
+   * arrived, and taking the focus from wherever the browser put it would be
+   * rude — and a server, which cannot scroll, does nothing.
+   */
+  function applyFocus() {
+    const focus = state.focus
+    const signature = focus ? JSON.stringify([focus.rowId, focus.key ?? null, focus.align ?? null]) : ""
+    const first = appliedFocus === undefined
+    const restoring = restoreFocus
+    restoreFocus = false
+
+    if (restoring && renderedEntry && navigable()) renderedEntry.focus({ preventScroll: true })
+    if (!first && signature === appliedFocus) return
+    appliedFocus = signature
+    if (!focus) return
+
+    // The tab stop falls back to the first row when the active one is not on screen; that is not "there".
+    const target = navigable()
+      ? renderedEntry?.parentElement?.dataset["rowId"] === focus.rowId
+        ? renderedEntry
+        : undefined
+      : cellElement(focus.rowId, undefined)
+    if (!target || currentDocument().activeElement === target) return
+
+    if (typeof target.scrollIntoView === "function") {
+      target.scrollIntoView({ block: focus.align ?? "nearest", inline: "nearest" })
+    }
+    if (!first && navigable()) target.focus({ preventScroll: true })
+  }
+
+  /** A cell taking the focus — by click, Tab or arrow — makes it the active one. */
+  table.addEventListener("focusin", (event) => {
+    if (!navigable()) return
+    const cell = event.target
+    if (!(cell instanceof HTMLElement) || cell.tagName !== "TD" || !cell.hasAttribute("tabindex")) return
+    const rowId = cell.parentElement?.dataset["rowId"]
+    const key = cell.dataset["key"]
+    if (rowId === undefined || key === undefined) return
+    const next = focusCell(state, rowId, key)
+    if (next !== state) update(next)
+  })
+
+  table.addEventListener("keydown", (event) => {
+    if (!navigable() || event.defaultPrevented) return
+    const target = event.target
+    if (!(target instanceof HTMLElement)) return
+
+    const cell = target.closest<HTMLElement>("td[tabindex]")
+    if (!cell || !body.contains(cell)) return
+
+    // From a control inside a cell, Escape goes back to the cell.
+    if (cell !== target) {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        cell.focus()
+      }
+      return
+    }
+
+    const rowId = cell.parentElement?.dataset["rowId"]
+    const key = cell.dataset["key"]
+    if (rowId === undefined || key === undefined) return
+
+    if (isNavigationKey(event.key) && !event.altKey && !event.shiftKey) {
+      const next = nextCell({ rows: renderedIds, columns: navColumns }, { rowId, key }, event.key, {
+        ctrlKey: event.ctrlKey || event.metaKey,
+        pageRows: pageRowsFrom(cell),
+        rtl: getComputedStyle(cell).direction === "rtl",
+      })
+      event.preventDefault()
+      if (!next) return
+      const element = cellElement(next.rowId, next.key)
+      element?.focus({ preventScroll: true })
+      if (typeof element?.scrollIntoView === "function") element.scrollIntoView({ block: "nearest", inline: "nearest" })
+      return
+    }
+
+    if (event.key === "Enter" || event.key === "F2" || event.key === " ") {
+      const own = cell.querySelector<HTMLElement>("input.tpz-checkbox, button.tpz-expander")
+      if ((key === "__select" || key === "__expand") && own) {
+        event.preventDefault()
+        own.click()
+        return
+      }
+
+      if (event.key !== " ") {
+        const control = cell.querySelector<HTMLElement>(INTERACTIVE_SELECTOR)
+        if (control) {
+          event.preventDefault()
+          control.focus()
+        }
+      }
+    }
+  })
 
   /** The id of a row's detail, which its expander points at. */
   function detailId(id: string): string {
@@ -1283,6 +1528,7 @@ export function createTable<TRow extends AnyRow>(
       unstyled: Boolean(settings.unstyled),
       appendRow: Boolean(settings.appendRow),
       detail: Boolean(settings.detail),
+      navigable: navigable(),
       href: Boolean(settings.rowHref),
       click: Boolean(settings.onRowClick),
       rowClass: Boolean(settings.rowClassName),
@@ -2959,7 +3205,7 @@ export function createTable<TRow extends AnyRow>(
 
   const changed = adoptInteractions()
   buildToolbar()
-  render()
+  const revealedOnStart = render()
 
   if (adopted?.searchFocused && searchInput) {
     // Back where the person was typing, caret and all.
@@ -2967,13 +3213,13 @@ export function createTable<TRow extends AnyRow>(
     const end = searchInput.value.length
     searchInput.setSelectionRange(end, end)
   }
-  if (changed) notify()
+  if (changed || revealedOnStart) notify()
 
   return {
     element: root,
     setData(data) {
       settings = { ...settings, data }
-      render()
+      if (render()) notify()
     },
     setOptions(next) {
       const previous = settings
@@ -3011,8 +3257,9 @@ export function createTable<TRow extends AnyRow>(
       }
 
       buildToolbar()
-      render()
+      const revealed = render()
       stateHandedIn = false
+      if (revealed) notify()
     },
     getState: () => state,
     setState(partial) {
@@ -3020,7 +3267,9 @@ export function createTable<TRow extends AnyRow>(
     },
     getRows: () => current().rows,
     getSelection: () => [...state.selection],
-    refresh: render,
+    refresh() {
+      if (render()) notify()
+    },
     destroy() {
       observer?.disconnect()
       clearTimeout(searchTimer)
@@ -3123,6 +3372,18 @@ function controlAfter(element: Element): HTMLElement | undefined {
     if (control instanceof HTMLElement) return control
   }
   return undefined
+}
+
+/**
+ * How many rows Page Up and Page Down move: as many as the scroll area shows,
+ * less one so the row the keyboard was on stays in sight.
+ */
+function pageRowsFrom(cell: HTMLElement): number {
+  const rowHeight = cell.getBoundingClientRect().height || 32
+  const scroll = cell.closest<HTMLElement>(".tpz-scroll")
+  const scrolls = scroll !== null && scroll.scrollHeight > scroll.clientHeight + 1
+  const height = scrolls ? scroll.clientHeight : cell.ownerDocument.defaultView?.innerHeight ?? 0
+  return Math.max(1, Math.floor(height / rowHeight) - 1)
 }
 
 /** The keys whose value is not the one already held, compared by identity. */

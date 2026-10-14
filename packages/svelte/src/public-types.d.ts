@@ -53,6 +53,8 @@ export {
   isExpanded,
   setExpanded,
   toggleExpanded,
+  clearFocus,
+  focusCell,
   copyText,
   downloadText,
 } from "@trapezium/core"
@@ -62,6 +64,7 @@ export type {
   Align,
   AnyRow,
   CellContext,
+  CellFocus,
   ColumnDef,
   ColumnFilter,
   Density,

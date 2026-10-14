@@ -147,6 +147,12 @@ export const Table = defineComponent({
      * are open is `state.expanded`; the server renders open rows open.
      */
     detail: { type: Object as PropType<VueDetail>, default: undefined },
+    /**
+     * Cells the keyboard can move between, with the arrows, Home, End and the
+     * Page keys. The active cell is `state.focus`, so setting it from outside
+     * scrolls there and puts the keyboard on it. Makes the table a grid.
+     */
+    cellNavigation: { type: Boolean, default: undefined },
     rowClassName: { type: Function as PropType<(row: AnyRow, index: number) => string | undefined>, default: undefined },
     emptyMessage: { type: String, default: undefined },
 
@@ -339,6 +345,7 @@ export const Table = defineComponent({
       theme: props.theme,
       rowHref: props.rowHref,
       detail: adaptedDetail.value,
+      cellNavigation: props.cellNavigation,
       id: props.id,
       rowClassName: props.rowClassName,
       emptyMessage: props.emptyMessage,

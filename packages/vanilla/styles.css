@@ -104,6 +104,8 @@
   --tpz-hover: color-mix(in oklab, var(--tpz-accent) 40%, transparent);
   --tpz-selected: color-mix(in oklab, var(--tpz-primary) 5%, transparent);
   --tpz-detail-bg: color-mix(in oklab, var(--tpz-muted) 35%, var(--tpz-surface));
+  --tpz-focused: color-mix(in oklab, var(--tpz-primary) 9%, transparent);
+  --tpz-focus-ring: var(--tpz-ring);
   --tpz-focus: 0 0 0 2px color-mix(in oklab, var(--tpz-ring) 45%, transparent);
 
   position: relative;
@@ -723,6 +725,34 @@
   cursor: pointer;
 }
 
+/*
+  The active row — `state.focus` — tinted a shade deeper than a selected one,
+  so a row a banner has just jumped to is found at a glance. Painted over the
+  frozen cells the same way as the other tints, further down.
+*/
+.tpz-tbody .tpz-tr[data-focused="true"] .tpz-td {
+  background: var(--tpz-focused);
+}
+
+/*
+  The active cell. An outline inside the cell rather than a shadow around it:
+  the cell clips what overflows it, and its neighbours would paint over
+  anything drawn outside. `scroll-margin` keeps a cell brought into view by
+  the keyboard out from under the sticky header.
+*/
+.tpz-td[tabindex] {
+  scroll-margin-top: var(--tpz-header-height);
+}
+
+.tpz-td[tabindex]:focus {
+  outline: none;
+}
+
+.tpz-td[tabindex]:focus-visible {
+  outline: 2px solid var(--tpz-focus-ring);
+  outline-offset: -2px;
+}
+
 /* ── Pinned columns ────────────────────────────────────────────────────── */
 
 .tpz-th[data-pin],
@@ -762,6 +792,10 @@
 
 .tpz-tbody .tpz-tr[data-selected="true"] .tpz-td[data-pin]::after {
   background: var(--tpz-selected);
+}
+
+.tpz-tbody .tpz-tr[data-focused="true"] .tpz-td[data-pin]::after {
+  background: var(--tpz-focused);
 }
 
 /* The edge of the frozen region, so it reads as frozen rather than misaligned. */
