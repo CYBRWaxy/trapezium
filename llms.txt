@@ -84,8 +84,8 @@ in normal flow, so there is no measuring pass, no ResizeObserver and no layout s
 They differ only in where the height comes from: "auto" grows each row to its tallest cell with
 --tpz-row-height as the floor, a number gives them all that height and ends what will not fit in an
 ellipsis, on however many lines the height allows (the count is worked out in CSS, nothing is
-measured). Only "fixed" truncates to one line. Wrapped rows align to the top; fixed and exact rows
-stay centred. The header has its own --tpz-header-height and does not follow rowHeight; density
+measured). Only "fixed" truncates to one line. Wrapped rows align to the top, the selection checkbox centred on the first
+line of text; fixed and exact rows stay centred. The header has its own --tpz-header-height and does not follow rowHeight; density
 moves both. Per column: wrap:false keeps one line whichever wrapping mode is on, wrap:true wraps,
 wrap:3 wraps and stops after three lines.
 
@@ -114,6 +114,47 @@ headerClassName · meta
 
 `format` replaces the cell text and keeps sorting/filtering on the raw value.
 `render` replaces the cell markup. CellContext = { value, row, rowIndex, rowId, column, text, format }.
+
+## Cell renderers
+
+A row of one line is exactly --tpz-row-height at every density (28 / 32 / 40px at compact / normal /
+relaxed), with rowHeight "fixed" or "auto", whatever the cells hold. Every built-in type keeps to
+that. A `render` keeps to it by following four rules:
+
+- Inherit the font size. No fixed text sizes; size icons in em (`width: 1em; height: 1em`).
+- Never scroll: no `overflow: auto` or `overflow: scroll` inside a cell.
+- No padding or margin above the first line, so it lines up with the other columns' first line.
+- Stay on one line unless the row is meant to grow. Anything taller than one line (a button, a
+  pill, an avatar) is at most `var(--tpz-text-cell-leading)` tall, with `vertical-align: top`.
+
+Variables a renderer can use, at compact / normal / relaxed:
+
+    --tpz-text-cell            11px / 11px / 12px   the cell's font size (inherited already)
+    --tpz-text-cell-leading    16px / 16px / 16px   one line; anything inline should fit in it
+    --tpz-row-height           28px / 32px / 40px   the whole row, including the cell's 1px bottom border
+    --tpz-cell-padding-y        5px /  6px /  6px   top and bottom padding of a cell, but only under
+                                                    rowHeight "auto" or a number, or wrap:true;
+                                                    a "fixed" row has none and centres its content
+    --tpz-cell-content-height  the height inside the cell: --tpz-row-height less the 1px border, and
+                               less both paddings where the cell is padded.
+                               fixed: 27px / 31px / 39px.  auto: 17px / 19px / 27px.
+                               rowHeight={N}: N − 1 − 2 × --tpz-cell-padding-y.
+
+To fill a cell use `height: var(--tpz-cell-content-height)`, never `height: var(--tpz-row-height)`,
+which is a pixel taller than the cell has and grows the row. --tpz-cell-content-height is set on
+`.tpz-td`, so it only exists inside a cell. With a number for rowHeight the row is the number and
+the same variables apply. Inside a cell `.tpz-badge` is 16px tall at the cell's text size less 1px
+(10 / 10 / 11px), and `.tpz-btn` is 16px tall at the cell's text size, so both are safe to use in a
+renderer; outside a cell they keep their interface sizes.
+
+    .row-action {
+      box-sizing: border-box;
+      height: var(--tpz-text-cell-leading);   /* one line */
+      padding: 0 0.5rem;                      /* nothing above the line */
+      font: inherit;                          /* the cell's size */
+      line-height: 1;
+      vertical-align: top;                    /* fills the line instead of poking out of it */
+    }
 
 ## Types
 
@@ -252,7 +293,8 @@ table's page size is not 25.
 ## Styling
 
 CSS custom properties on `.tpz` (--tpz-surface, --tpz-muted, --tpz-border, --tpz-primary,
---tpz-row-height, --tpz-header-height, --tpz-font-mono, …). Dark mode follows the page's color-scheme, or `.dark` /
+--tpz-row-height, --tpz-header-height, --tpz-font-mono, …), and --tpz-cell-content-height on each
+cell (see Cell renderers). Dark mode follows the page's color-scheme, or `.dark` /
 [data-theme="dark"] on an ancestor, or theme="dark" on the table.
 classNames={{ root, frame, toolbar, search, scroll, table, thead, tbody, headerRow, headerCell, row,
 cell, selectCell, pagination, empty, footer }} adds classes; `unstyled` drops the defaults. Same in

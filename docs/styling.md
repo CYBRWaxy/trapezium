@@ -28,6 +28,8 @@ Every value is a CSS custom property on `.tpz`. Set them anywhere that wins the 
 
 **Type** — `--tpz-font-sans` `--tpz-font-mono` `--tpz-text-header` `--tpz-text-cell` `--tpz-text-cell-leading` `--tpz-text-ui`
 
+**Inside a cell** — `--tpz-cell-content-height`, the height a cell renderer has to fill: the row height less the cell's 1px bottom border, and less its padding where it is padded. Read it, do not set it. See [what a renderer should do](rendering.md#what-a-renderer-should-do).
+
 **Other** — `--tpz-transition` `--tpz-hover` `--tpz-selected` `--tpz-focus` `--tpz-max-height`
 
 Every width and height is the size of the thing as drawn, borders and padding included: cells are `box-sizing: border-box` in the stylesheet itself, so a page with no global reset gets the same table as one with Tailwind's.
@@ -100,6 +102,15 @@ Force it per table:
 <Table data={rows} density="compact" />       // 1.75rem rows
 <Table data={rows} densityControl />          // let the user choose
 ```
+
+| | Compact | Normal | Relaxed |
+|---|---|---|---|
+| `--tpz-row-height` | 28px | 32px | 40px |
+| `--tpz-text-cell` | 11px | 11px | 12px |
+| `--tpz-text-cell-leading` | 16px | 16px | 16px |
+| `--tpz-cell-padding-y` | 5px | 6px | 6px |
+
+A row of one line is exactly the row height at every density, fixed or auto: compact pads a wrapping cell by 5px rather than 6 because 6 + 16 + 6 and the 1px border is 29, which does not fit in 28. Compact and normal share a text size on purpose — compact buys rows, not smaller type.
 
 ## Row height
 

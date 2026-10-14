@@ -36,6 +36,40 @@ Two properties, and the difference between them matters:
 }
 ```
 
+## What a renderer should do
+
+A row of one line is exactly `--tpz-row-height` — 28, 32 and 40px at compact, normal and relaxed — whether `rowHeight` is `"fixed"` or `"auto"`, and whatever is in the cells. Every built-in type keeps to that. Your renderer keeps to it by following four rules:
+
+- **Inherit the font size.** No fixed text sizes; size icons in `em`. The cell is 11px at compact and normal and 12px at relaxed, and a renderer that says `font-size: 12px` is a size bigger than the text beside it.
+- **Never scroll.** No `overflow: auto` or `overflow: scroll` inside a cell. A scrollbar inside a row is a trap for the wheel and a second scroll position nobody asked for.
+- **Nothing above the first line.** No padding or margin before it, so it lines up with the first line of every other column.
+- **One line unless the row is meant to grow.** Anything taller than a line of text — a button, a pill, an avatar — is at most `var(--tpz-text-cell-leading)` (16px) tall and hangs from the top of the line with `vertical-align: top`. A box exactly as tall as the line but sat on its baseline still pokes a pixel or two out of it, and under `rowHeight="auto"` the row grows by that much.
+
+```css
+.row-action {
+  box-sizing: border-box;
+  height: var(--tpz-text-cell-leading);
+  border: 1px solid var(--tpz-border);
+  border-radius: 6px;
+  padding: 0 0.5rem;
+  font: inherit;
+  line-height: 1;
+  vertical-align: top;
+}
+```
+
+`.tpz-btn` and `.tpz-badge` already do this when they are inside a cell, so a renderer that uses them needs no CSS of its own. Outside a cell they keep their interface sizes.
+
+| Variable | Compact | Normal | Relaxed | What it is |
+|---|---|---|---|---|
+| `--tpz-text-cell` | 11px | 11px | 12px | The cell's font size. Inherited already — use it only to size something relative to the text. |
+| `--tpz-text-cell-leading` | 16px | 16px | 16px | One line. Anything inline should fit in it. |
+| `--tpz-row-height` | 28px | 32px | 40px | The whole row, the cell's 1px bottom border included. A number for `rowHeight` sets it. |
+| `--tpz-cell-padding-y` | 5px | 6px | 6px | Top and bottom padding of a cell — only under `rowHeight="auto"` or a number, and in a `wrap: true` column. A fixed row has none and centres its content instead. |
+| `--tpz-cell-content-height` | 27px / 17px | 31px / 19px | 39px / 27px | The height inside the cell, fixed / auto: the row height less the border, and less both paddings where the cell is padded. Set on `.tpz-td`, so it exists only inside a cell. |
+
+To fill a cell, use `height: var(--tpz-cell-content-height)`. `height: var(--tpz-row-height)` asks for a pixel more than the cell has — the cell's bottom border is inside the row height — and the row grows by it.
+
 ## Actions
 
 ```tsx
@@ -47,7 +81,7 @@ Two properties, and the difference between them matters:
   exportable: false,
   width: 90,
   render: ({ row }) => (
-    <button onClick={(event) => { event.stopPropagation(); open(row.id) }}>Open</button>
+    <button className="tpz-btn" onClick={(event) => { event.stopPropagation(); open(row.id) }}>Open</button>
   ),
 }
 ```
