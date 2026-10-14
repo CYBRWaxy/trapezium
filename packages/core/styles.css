@@ -802,10 +802,11 @@
   column with a `maxWidth` uses the same box, capped at `--tpz-col-cap`, so it
   grows with its content up to there and no further.
 */
+/* The cap is the column's whole width: the cell's padding and its border come out of it. */
 .tpz-box {
   display: block;
   min-width: 0;
-  max-width: var(--tpz-col-cap, none);
+  max-width: calc(var(--tpz-col-cap, 100000px) - 2 * var(--tpz-cell-padding-x) - 1px);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -821,7 +822,7 @@
 }
 
 .tpz-th .tpz-th-inner {
-  max-width: var(--tpz-col-cap, none);
+  max-width: calc(var(--tpz-col-cap, 100000px) - 1px);
 }
 
 /* While some columns grow, the rest keep to their content: a width of nothing, which a cell widens to fit. */
@@ -839,8 +840,17 @@
 */
 .tpz-th[data-pin-when],
 .tpz-td[data-pin-when] {
-  position: relative;
   background: var(--tpz-surface);
+}
+
+/*
+  Positioned, and a stacking context of its own, so the tint painted under its
+  content shows above its background. A header cell is already both: it sticks
+  to the top, and that must not be taken from it.
+*/
+.tpz-td[data-pin-when] {
+  position: relative;
+  z-index: 0;
 }
 
 .tpz-th[data-pin-when] {

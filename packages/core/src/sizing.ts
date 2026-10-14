@@ -11,7 +11,8 @@
  *   their width, minimum and maximum, and their content is laid out in a box
  *   that cannot push the cell wider, so long content ends in an ellipsis.
  * - A column with a `maxWidth` grows with its content up to that width, by
- *   the same box, capped.
+ *   the same box, capped — and takes no share of spare width, which would
+ *   carry it past its cap.
  * - With any column given `grow`, every other column keeps to its content or
  *   its width, and the growing columns share what is left, in proportion.
  */
@@ -56,7 +57,10 @@ export function columnSizing<TRow, TNode>(columns: readonly ResolvedColumn<TRow,
         style["--tpz-col-cap"] = `${String(column.maxWidth)}px`
         box = true
       }
-      if ((column.grow ?? 0) > 0) {
+      if (column.maxWidth !== undefined && !((column.grow ?? 0) > 0)) {
+        // A capped column keeps to its content — capped — rather than taking a share of spare width past its cap.
+        size = "fit"
+      } else if ((column.grow ?? 0) > 0) {
         size = "grow"
         // Several growing columns split the room by percentage; one alone takes all of it as it is.
         if (growing.length > 1) style["width"] = `${String(Math.round(((column.grow ?? 0) / shares) * 10000) / 100)}%`

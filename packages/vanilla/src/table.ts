@@ -30,6 +30,9 @@ import {
   isDetailOpen,
   isInteractiveTarget,
   cellDisplayText,
+  columnSizing,
+  pinWhenToken,
+  responsivePinStyles,
   clearSelection,
   rangeSelection,
   startDragSelect,
@@ -95,6 +98,7 @@ import {
   type AnyRow,
   type CellContext,
   type CellEdit,
+  type CellSizing,
   type ColumnDef,
   type ColumnFilter,
   type Density,
@@ -494,6 +498,8 @@ export function createTable<TRow extends AnyRow>(
   const failedEdits = new Map<string, string>()
 
   const root = el("div", { class: "tpz" })
+  // The container queries that freeze columns pinned by width, in the root only while some column is.
+  const pinStyle = el("style", {})
   const frame = el("div", { class: "tpz-frame" })
   const toolbar = el("div", { class: "tpz-toolbar" })
   const toolbarStart = el("div", { class: "tpz-toolbar-group" })
@@ -1105,7 +1111,17 @@ export function createTable<TRow extends AnyRow>(
       pinEdges: pinEdgesOf(columns),
       columnCount,
       entry: navigable() ? entryCell({ rows: gridIds, columns: navColumns }, state.focus) : undefined,
+      sizing: columnSizing(columns),
     }
+
+    const pinCss = responsivePinStyles(columns)
+    if (pinCss === "") {
+      pinStyle.remove()
+    } else {
+      if (pinStyle.textContent !== pinCss) pinStyle.textContent = pinCss
+      if (pinStyle.parentNode !== root) root.prepend(pinStyle)
+    }
+    watchWidth(pinCss !== "")
 
     /*
       The cheap path.
@@ -1268,6 +1284,8 @@ export function createTable<TRow extends AnyRow>(
     columnCount: number
     /** With cell navigation, the cell in the tab order; absent when the keyboard does not move between cells. */
     entry: { rowId: string; key: string } | undefined
+    /** How wide each column's cells are — `columnSizing(columns)`. */
+    sizing: Record<string, CellSizing>
   }
 
   /** One row, built the same way whether the body is being filled or extended. */
@@ -1462,13 +1480,15 @@ export function createTable<TRow extends AnyRow>(
         "data-wrap": wrapAttribute(column.wrap),
         "data-pin": column.pin,
         "data-pin-edge": pinEdges.has(column.key) ? column.pin : undefined,
+        "data-pin-when": column.pinWhen ? pinWhenToken(column.pinWhen) : undefined,
+        "data-size": build.sizing[column.key]?.size,
         "data-key": column.key,
         "data-label": column.header,
         tabindex: tabindex(column.key),
         "data-editable": cellEditable ? "true" : undefined,
         "aria-readonly": editable && !cellEditable ? "true" : undefined,
       })
-      if (column.width) cell.style.width = `${String(column.width)}px`
+      applySizing(cell, build.sizing[column.key])
 
       fillCell(cell, row, id, index, column, columnIndex, build, info)
       tr.append(cell)
@@ -1495,7 +1515,7 @@ export function createTable<TRow extends AnyRow>(
     index: number,
     column: ResolvedColumn<TRow, Node | string>,
     columnIndex: number,
-    build: Pick<RowBuild, "types" | "format">,
+    build: Pick<RowBuild, "types" | "format" | "sizing">,
     info?: RowInfo,
   ) {
     const editKey = editId(id, column.key)
@@ -1530,14 +1550,20 @@ export function createTable<TRow extends AnyRow>(
       `height` alone cannot enforce.
     */
     let host: Node = cell
+    // The box that holds the column to its width, or caps it — see `columnSizing`.
+    if (build.sizing[column.key]?.box) {
+      const box = el("span", { class: "tpz-box" })
+      cell.append(box)
+      host = box
+    }
     if (typeof column.wrap === "number") {
       const clamp = el("span", { class: "tpz-clamp" })
       clamp.style.setProperty("--tpz-cell-lines", String(column.wrap))
-      cell.append(clamp)
+      host.appendChild(clamp)
       host = clamp
     } else if (typeof settings.rowHeight === "number") {
       const fit = el("span", { class: "tpz-fit" })
-      cell.append(fit)
+      host.appendChild(fit)
       host = fit
     }
 
@@ -1594,7 +1620,16 @@ export function createTable<TRow extends AnyRow>(
     const column = headerColumns.find((entry) => entry.key === key)
     const cell = cellElement(rowId, key)
     if (!found || !column || !cell) return
-    fillCell(cell, found.row, rowId, found.index, column, headerColumns.indexOf(column), { types: registry(), format: formatting() }, found.info)
+    fillCell(
+      cell,
+      found.row,
+      rowId,
+      found.index,
+      column,
+      headerColumns.indexOf(column),
+      { types: registry(), format: formatting(), sizing: columnSizing(headerColumns) },
+      found.info,
+    )
   }
 
   /** A rendered row by id — one of the data's, or a pinned one. */
@@ -2364,7 +2399,11 @@ export function createTable<TRow extends AnyRow>(
         column.mono,
         column.wrap ?? null,
         column.pin ?? null,
+        column.pinWhen ?? null,
         column.width ?? null,
+        column.minWidth ?? null,
+        column.maxWidth ?? null,
+        column.grow ?? null,
         column.className ?? null,
         column.sortable,
         column.headerSearch,
@@ -2463,19 +2502,31 @@ export function createTable<TRow extends AnyRow>(
 
   /** Frozen columns need real pixel offsets, and only layout knows them. */
   function measurePinOffsets(): Record<string, number> {
-    const cells = [...head.querySelectorAll<HTMLElement>("[data-pin]")]
+    // Filtered rather than selected with a list: a server's elements understand one compound selector at a time.
+    const cells = [...head.querySelectorAll<HTMLElement>("th[data-key]")].filter(
+      (cell) => cell.dataset["pin"] !== undefined || cell.dataset["pinWhen"] !== undefined,
+    )
     const offsets: Record<string, number> = {}
+    const sideOf = (cell: HTMLElement) => cell.dataset["pin"] ?? (cell.dataset["pinWhen"]?.startsWith("end") ? "end" : "start")
+    /*
+      A column frozen by width is counted only while its container query has
+      frozen it, which the browser says by its position. A server has no
+      layout to ask, and nothing is frozen there but the columns always pinned.
+    */
+    const frozen = (cell: HTMLElement) =>
+      cell.dataset["pin"] !== undefined ||
+      (typeof getComputedStyle === "function" && cell instanceof Element && getComputedStyle(cell).position === "sticky")
 
     let start = 0
-    for (const cell of cells.filter((entry) => entry.dataset["pin"] === "start")) {
+    for (const cell of cells.filter((entry) => sideOf(entry) === "start")) {
       offsets[cell.dataset["key"] ?? ""] = start
-      start += cell.getBoundingClientRect().width
+      if (frozen(cell)) start += cell.getBoundingClientRect().width
     }
 
     let end = 0
-    for (const cell of cells.filter((entry) => entry.dataset["pin"] === "end").reverse()) {
+    for (const cell of cells.filter((entry) => sideOf(entry) === "end").reverse()) {
       offsets[cell.dataset["key"] ?? ""] = end
-      end += cell.getBoundingClientRect().width
+      if (frozen(cell)) end += cell.getBoundingClientRect().width
     }
 
     return offsets
@@ -2501,6 +2552,44 @@ export function createTable<TRow extends AnyRow>(
       if (offset === undefined) continue
       cell.style[cell.dataset["pin"] === "end" ? "right" : "left"] = `${String(offset)}px`
     }
+    // A column frozen by width reads its offset from a custom property: `left` would move it while it is not frozen.
+    for (const cell of scope.querySelectorAll<HTMLElement>("[data-pin-when][data-key]")) {
+      const offset = offsets[cell.dataset["key"] ?? ""]
+      if (offset !== undefined) cell.style.setProperty("--tpz-pin-offset", `${String(offset)}px`)
+    }
+  }
+
+  /**
+   * A column's width on one of its cells: written only where it differs, so a
+   * cell built a moment ago is left exactly as it was, and taken off when the
+   * column no longer has it.
+   */
+  function applySizing(cell: HTMLElement, sizing: CellSizing | undefined) {
+    const properties: Record<string, string> = { width: "width", minWidth: "min-width", maxWidth: "max-width", "--tpz-col-cap": "--tpz-col-cap" }
+    for (const [name, css] of Object.entries(properties)) {
+      const wanted = sizing?.style[name] ?? ""
+      if (cell.style.getPropertyValue(css) === wanted) continue
+      if (wanted === "") cell.style.removeProperty(css)
+      else cell.style.setProperty(css, wanted)
+    }
+    if (sizing?.size) cell.dataset["size"] = sizing.size
+    else delete cell.dataset["size"]
+  }
+
+  /*
+    A width of the table that freezes or frees a column moves the offsets of
+    the others, so while any column is pinned by width the root is watched.
+  */
+  let widthObserver: ResizeObserver | undefined
+  function watchWidth(wanted: boolean) {
+    if (!wanted || typeof ResizeObserver === "undefined") {
+      widthObserver?.disconnect()
+      widthObserver = undefined
+      return
+    }
+    if (widthObserver) return
+    widthObserver = new ResizeObserver(() => applyPinOffsets())
+    widthObserver.observe(root)
   }
 
   /**
@@ -2846,13 +2935,11 @@ export function createTable<TRow extends AnyRow>(
       "data-align": column.align,
       "data-pin": column.pin,
       "data-pin-edge": isPinEdge(columns, key) ? column.pin : undefined,
+      "data-pin-when": column.pinWhen ? pinWhenToken(column.pinWhen) : undefined,
       "data-key": key,
       "data-filtered": state.filters.some((entry) => entry.key === key) ? "true" : undefined,
       "aria-sort": "none",
     })
-    if (column.width) cell.style.width = `${String(column.width)}px`
-    if (column.minWidth) cell.style.minWidth = `${String(column.minWidth)}px`
-    if (column.maxWidth) cell.style.maxWidth = `${String(column.maxWidth)}px`
 
     const inner = el("div", { class: "tpz-th-inner" })
     const reorderable = settings.reorderable !== false && column.reorderable !== false && !column.pin
@@ -3044,15 +3131,8 @@ export function createTable<TRow extends AnyRow>(
 
     cell.setAttribute("aria-sort", sort ? (sort.direction === "asc" ? "ascending" : "descending") : "none")
 
-    // Written only when it differs, so a cell built a moment ago — which set
-    // these itself — is left exactly as it was.
-    const size = (property: "width" | "minWidth" | "maxWidth", pixels: number | undefined) => {
-      const wanted = pixels ? `${String(pixels)}px` : ""
-      if (cell.style[property] !== wanted) cell.style[property] = wanted
-    }
-    size("width", column.width)
-    size("minWidth", column.minWidth)
-    size("maxWidth", column.maxWidth)
+    // The column's width, which follows a drag without the cell being built again.
+    applySizing(cell, columnSizing(headerColumns)[key])
 
     if (state.filters.some((entry) => entry.key === key)) cell.dataset["filtered"] = "true"
     else delete cell.dataset["filtered"]
@@ -4209,6 +4289,7 @@ export function createTable<TRow extends AnyRow>(
       if (render()) notify()
     },
     destroy() {
+      widthObserver?.disconnect()
       warming?.stop()
       warming = undefined
       if (editing) {

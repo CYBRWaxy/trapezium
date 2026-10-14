@@ -22,7 +22,7 @@ describe("column sizing", () => {
 
   it("caps a content-sized column at its maxWidth, and floors it at its minWidth", () => {
     expect(columnSizing(resolve([{ key: "note", maxWidth: 200, minWidth: 60 }]))["note"]).toEqual({
-      size: undefined,
+      size: "fit",
       style: { minWidth: "60px", "--tpz-col-cap": "200px" },
       box: true,
     })
