@@ -9,6 +9,11 @@ import {
   defaultTypeRegistry,
   distinctValues,
   downloadText,
+  expandableIds,
+  isDetailOpen,
+  isInteractiveTarget,
+  setExpanded,
+  toggleExpanded,
   filterInputType,
   formatWithType,
   getRows,
@@ -63,6 +68,7 @@ import {
   type ColumnDef,
   type ColumnFilter,
   type Density,
+  type DetailOptions,
   type FilterOperator,
   type FormatContext,
   type GetRowId,
@@ -200,8 +206,24 @@ export type TableOptions<TRow extends AnyRow = AnyRow> = {
   theme?: "light" | "dark"
 
   rowHref?: (row: TRow) => string
+  /**
+   * Fires on a click anywhere in the row that was not on a control — a link,
+   * a button, an input, a label or a menu inside the row is left to itself.
+   */
   onRowClick?: (row: TRow, event: MouseEvent) => void
   rowClassName?: (row: TRow, index: number) => string | undefined
+
+  /**
+   * Detail rows: content that opens below a row and spans the table's width.
+   *
+   * An expander column leads the table, with a button per row and one in the
+   * header for every row on the page. Which rows are open is
+   * `state.expanded`, so it can be controlled, saved, and carried in the URL
+   * with `include: ["expanded"]`; a server render shows open rows open. A
+   * detail row is never counted, paged, sorted, selected or exported, and is
+   * as tall as its content. `render` returns a node or a string.
+   */
+  detail?: DetailOptions<TRow, Node | string>
 
   /** Replaces the "nothing here" state. */
   emptyState?: Node | string
@@ -250,6 +272,12 @@ export type TableOptions<TRow extends AnyRow = AnyRow> = {
   caption?: string
   /** Describes the table to a screen reader. Use it, or `caption`. */
   ariaLabel?: string
+  /**
+   * Base for the ids the table gives its own elements — a detail row, which
+   * its expander names in `aria-controls`. Give each table on a page its own
+   * when more than one has detail rows. Defaults to `"tpz"`.
+   */
+  id?: string
 }
 
 export type TableInstance<TRow extends AnyRow = AnyRow> = {
@@ -327,10 +355,19 @@ export function createTable<TRow extends AnyRow>(
    */
   let renderedNodes: HTMLElement[] = []
   let renderedSelection = new Set<string>()
+  /**
+   * The detail row in the document for each row id, open or — under
+   * `keepMounted` — closed and hidden. Kept across a rebuild for the hidden
+   * ones and the open ones alike when their row is the same object, so a
+   * detail that loads its own data is not built, and does not load, again
+   * because the table was sorted.
+   */
+  let detailNodes = new Map<string, { row: TRow; tr: HTMLElement }>()
   let renderedShape = ""
   /** Bumped by `setOptions`, so a change to columns, types or renderers rebuilds. */
   let generation = 0
   let selectAllBox: HTMLInputElement | undefined
+  let expandAllButton: HTMLButtonElement | undefined
 
   const root = el("div", { class: "tpz" })
   const frame = el("div", { class: "tpz-frame" })
@@ -737,7 +774,7 @@ export function createTable<TRow extends AnyRow>(
     const cls = classes()
     const selection = selectionOf()
     const selectionMode = selection?.mode
-    const columnCount = columns.length + (selectionMode ? 1 : 0)
+    const columnCount = columns.length + (selectionMode ? 1 : 0) + (settings.detail ? 1 : 0)
     const rowIds = rows.map((row, index) => resolveRowId(row, index, settings.getRowId))
     const selectable = selectableIds(rows, rowIds, selection?.isSelectable)
 
@@ -813,7 +850,7 @@ export function createTable<TRow extends AnyRow>(
     toolbar.style.display = !hasControls && state.filters.length === 0 ? "none" : ""
 
     const shape = shapeOf(columns, selection)
-    const build: RowBuild = { columns, types, format, cls, selection, pinEdges: pinEdgesOf(columns) }
+    const build: RowBuild = { columns, types, format, cls, selection, pinEdges: pinEdgesOf(columns), columnCount }
 
     /*
       The cheap path.
@@ -841,9 +878,11 @@ export function createTable<TRow extends AnyRow>(
         // not spend a frame in the wrong place.
         applyPinOffsets(batch, offsets)
 
-        // After the last data row rather than at the end of the body: a
-        // caller's appended row sits below the data and must stay there.
-        const last = renderedNodes[renderedNodes.length - 1]
+        // After the last data row — and its detail, if it has one open —
+        // rather than at the end of the body: a caller's appended row sits
+        // below the data and must stay there.
+        const lastId = renderedIds[renderedIds.length - 1]
+        const last = (lastId !== undefined ? detailNodes.get(lastId)?.tr : undefined) ?? renderedNodes[renderedNodes.length - 1]
         if (last) last.after(batch)
         else body.append(batch)
 
@@ -857,6 +896,7 @@ export function createTable<TRow extends AnyRow>(
       // link in it carries the whole state, and the page has just changed.
       renderHeader(columns, cls, selectionMode)
       syncSelection()
+      syncDetails(build)
       renderPagination(pagination, total, pageCount, rows.length)
       void hidden
       return
@@ -912,7 +952,15 @@ export function createTable<TRow extends AnyRow>(
     }
 
     const nodes = rows.map((row, index) => buildRow(row, rowIds[index]!, index, build))
-    rendered.push(...nodes)
+
+    // Each row, then its detail when it has one open or kept.
+    const previousDetails = detailNodes
+    detailNodes = new Map()
+    nodes.forEach((tr, index) => {
+      rendered.push(tr)
+      const detail = detailFor(rows[index]!, rowIds[index]!, index, build, previousDetails)
+      if (detail) rendered.push(detail)
+    })
 
     if (settings.appendRow) {
       rendered.push(
@@ -929,6 +977,7 @@ export function createTable<TRow extends AnyRow>(
     renderedSelection = new Set(state.selection)
     renderedShape = shape
     syncSelectAll()
+    syncExpandAll()
 
     applyPinOffsets()
     renderPagination(pagination, total, pageCount, rows.length)
@@ -944,6 +993,8 @@ export function createTable<TRow extends AnyRow>(
     selection: ResolvedSelection<TRow> | undefined
     /** Keys of the last pinned column on each side, which carry the frozen edge. */
     pinEdges: Set<string>
+    /** Every column a full-width row spans, the table's own included. */
+    columnCount: number
   }
 
   /** One row, built the same way whether the body is being filled or extended. */
@@ -951,14 +1002,25 @@ export function createTable<TRow extends AnyRow>(
     const { columns, types, format, cls, selection, pinEdges } = build
     const selectionMode = selection?.mode
     const selected = state.selection.includes(id)
+    const detail = settings.detail
+    const expandable = detail !== undefined && (detail.canExpand ? detail.canExpand(row) : true)
+    const open = isDetailOpen(state, row, id, detail)
+    const togglesDetail = expandable && detail?.toggleOnRowClick === true
+
     const tr = el("tr", {
       class: cls("row", settings.rowClassName?.(row, index)),
       "data-selected": selected ? "true" : undefined,
-      "data-clickable": settings.onRowClick ? "true" : undefined,
+      "data-clickable": settings.onRowClick || togglesDetail ? "true" : undefined,
+      "data-expanded": open ? "true" : undefined,
     })
 
-    if (settings.onRowClick) {
-      tr.addEventListener("click", (event) => settings.onRowClick?.(row, event))
+    if (settings.onRowClick || togglesDetail) {
+      tr.addEventListener("click", (event) => {
+        // A link, a button, a checkbox in the row is what was meant, not the row.
+        if (isInteractiveTarget(event.target, tr)) return
+        settings.onRowClick?.(row, event)
+        if (togglesDetail) update(toggleExpanded(state, id))
+      })
     }
 
     if (selectionMode) {
@@ -996,6 +1058,29 @@ export function createTable<TRow extends AnyRow>(
         update(toggleSelection(state, id, selectionMode === "single"))
       })
       tr.append(el("td", { class: cls("selectCell"), "data-pin": "start", "data-key": "__select" }, [box]))
+    }
+
+    if (detail) {
+      const cell = el("td", { class: cls("expandCell"), "data-pin": "start", "data-key": "__expand" })
+      if (expandable) {
+        const button = el(
+          "button",
+          {
+            type: "button",
+            class: "tpz-expander",
+            "aria-expanded": open ? "true" : "false",
+            "aria-controls": open ? detailId(id) : undefined,
+            "aria-label": `${open ? "Hide" : "Show"} details for row ${String(index + 1)}`,
+          },
+          [icon("chevronRight", 14)],
+        )
+        button.addEventListener("click", (event) => {
+          event.stopPropagation()
+          update(toggleExpanded(state, id))
+        })
+        cell.append(button)
+      }
+      tr.append(cell)
     }
 
     columns.forEach((column, columnIndex) => {
@@ -1061,6 +1146,119 @@ export function createTable<TRow extends AnyRow>(
     return true
   }
 
+  /** The id of a row's detail, which its expander points at. */
+  function detailId(id: string): string {
+    return `${settings.id ?? "tpz"}-detail-${encodeURIComponent(id)}`
+  }
+
+  /**
+   * A row's detail row, when it should be in the document: open, or closed
+   * but kept by `keepMounted` after being opened once. One already built for
+   * the same row object is reused rather than built again.
+   */
+  function detailFor(
+    row: TRow,
+    id: string,
+    index: number,
+    build: RowBuild,
+    previous: Map<string, { row: TRow; tr: HTMLElement }>,
+  ): HTMLElement | undefined {
+    const detail = settings.detail
+    if (!detail) return undefined
+
+    const open = isDetailOpen(state, row, id, detail)
+    const kept = previous.get(id)
+    const reusable = kept && kept.row === row ? kept.tr : undefined
+
+    if (!open && !(detail.keepMounted && reusable)) return undefined
+
+    const tr = reusable ?? buildDetailRow(row, id, index, build)
+    tr.hidden = !open
+    // A kept row may have been built when the table had another column count.
+    tr.firstElementChild?.setAttribute("colspan", String(build.columnCount))
+    detailNodes.set(id, { row, tr })
+    return tr
+  }
+
+  function buildDetailRow(row: TRow, id: string, index: number, build: RowBuild): HTMLElement {
+    const content = settings.detail?.render({
+      row,
+      rowId: id,
+      rowIndex: index,
+      collapse: () => update(setExpanded(state, [id], false)),
+    })
+    const inner = el("div", { class: "tpz-detail" })
+    if (content !== undefined && content !== null) inner.append(typeof content === "string" ? text(content) : content)
+
+    return el("tr", { class: build.cls("detailRow"), id: detailId(id), "data-detail-for": id }, [
+      el("td", { class: build.cls("detailCell"), colspan: build.columnCount, "data-wrap": "true" }, [inner]),
+    ])
+  }
+
+  /**
+   * Brings the detail rows on screen into line with the state, without
+   * rebuilding the rows around them — so the expander just pressed keeps its
+   * focus, and every other open detail keeps whatever is in it.
+   */
+  function syncDetails(build: RowBuild) {
+    const detail = settings.detail
+    if (!detail && detailNodes.size === 0) return
+
+    const previous = detailNodes
+    detailNodes = new Map()
+
+    renderedRows.forEach((row, index) => {
+      const id = renderedIds[index]!
+      const tr = renderedNodes[index]
+      if (!tr) return
+
+      const open = isDetailOpen(state, row, id, detail)
+      if (open) tr.dataset["expanded"] = "true"
+      else delete tr.dataset["expanded"]
+
+      const button = tr.querySelector<HTMLButtonElement>(".tpz-expander")
+      if (button) {
+        button.setAttribute("aria-expanded", open ? "true" : "false")
+        if (open) button.setAttribute("aria-controls", detailId(id))
+        else button.removeAttribute("aria-controls")
+        button.setAttribute("aria-label", `${open ? "Hide" : "Show"} details for row ${String(index + 1)}`)
+      }
+
+      const node = detailFor(row, id, index, build, previous)
+      const current = previous.get(id)?.tr
+      if (current && current !== node) current.remove()
+      if (node && tr.nextSibling !== node) tr.after(node)
+    })
+
+    // Details whose rows have gone — scrolled off by a page that replaced them.
+    for (const [id, entry] of previous) {
+      if (!detailNodes.has(id) || detailNodes.get(id)?.tr !== entry.tr) entry.tr.remove()
+    }
+
+    syncExpandAll()
+  }
+
+  /** The header's expander, after the rows or the open details beneath it moved. */
+  function syncExpandAll() {
+    const button = expandAllButton
+    if (!button) return
+
+    const ids = expandableIds(renderedRows, renderedIds, settings.detail)
+    const open = ids.filter((id) => (state.expanded ?? []).includes(id)).length
+    const all = ids.length > 0 && open === ids.length
+
+    // Present only while there is a row to open, as it is in every adapter.
+    const cell = expandHeader
+    if (ids.length === 0) button.remove()
+    else if (cell && button.parentNode !== cell) cell.append(button)
+
+    button.setAttribute("aria-expanded", all ? "true" : "false")
+    button.setAttribute(
+      "aria-label",
+      all ? "Hide details for every row on this page" : "Show details for every row on this page",
+    )
+  }
+
   /**
    * Everything about a render other than which rows are in it.
    *
@@ -1084,6 +1282,7 @@ export function createTable<TRow extends AnyRow>(
       classNames: settings.classNames ?? null,
       unstyled: Boolean(settings.unstyled),
       appendRow: Boolean(settings.appendRow),
+      detail: Boolean(settings.detail),
       href: Boolean(settings.rowHref),
       click: Boolean(settings.onRowClick),
       rowClass: Boolean(settings.rowClassName),
@@ -1250,6 +1449,36 @@ export function createTable<TRow extends AnyRow>(
     return cell
   }
 
+  /**
+   * The header cell above the expanders, with a button that opens or closes
+   * every row on the page. Like the selection header it reads the rows on
+   * screen when it is pressed, not when it was built.
+   */
+  function expandHeaderCell(): HTMLElement {
+    const cell = el("th", {
+      scope: "col",
+      class: "tpz-th tpz-expand-cell",
+      "data-pin": "start",
+      "data-key": "__expand",
+    })
+
+    const button = el(
+      "button",
+      { type: "button", class: "tpz-expander", "aria-expanded": "false", "aria-label": "" },
+      [icon("chevronRight", 14)],
+    )
+    button.addEventListener("click", () => {
+      const ids = expandableIds(renderedRows, renderedIds, settings.detail)
+      const all = ids.length > 0 && ids.every((id) => (state.expanded ?? []).includes(id))
+      update(setExpanded(state, ids, !all))
+    })
+
+    expandAllButton = button
+    expandHeader = cell
+    syncExpandAll()
+    return cell
+  }
+
   /* ── Header ────────────────────────────────────────────────────────────── */
 
   /** What a header cell was built from, and the parts of it that change with the state. */
@@ -1277,6 +1506,8 @@ export function createTable<TRow extends AnyRow>(
    */
   let stateHandedIn = false
   let selectionCell: { mode: "single" | "multiple"; cell: HTMLElement } | undefined
+  /** The header cell above the expanders, kept across renders like the selection's. */
+  let expandHeader: HTMLElement | undefined
 
   /**
    * Brings the header into line with the state, keeping every cell it can.
@@ -1313,6 +1544,14 @@ export function createTable<TRow extends AnyRow>(
     } else {
       selectionCell = undefined
       selectAllBox = undefined
+    }
+
+    if (settings.detail) {
+      expandHeader ??= expandHeaderCell()
+      cells.push(expandHeader)
+    } else {
+      expandHeader = undefined
+      expandAllButton = undefined
     }
 
     // A search box open over a column that is no longer shown has nothing to

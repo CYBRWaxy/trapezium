@@ -22,6 +22,8 @@ import type {
   CellContext,
   ColumnDef,
   Density,
+  DetailContext,
+  DetailOptions,
   FormatContext,
   PaginationOptions,
   PartialTableState,
@@ -53,6 +55,11 @@ import type {
 
 export type VueColumn<TRow extends AnyRow = AnyRow> = Omit<ColumnDef<TRow, unknown>, "render" | "renderHeader"> & {
   render?: (context: CellContext<TRow, unknown>) => VNode | Node | string
+}
+
+/** Detail rows, with a renderer that may return a VNode — a real component, below its row. */
+export type VueDetail<TRow extends AnyRow = AnyRow> = Omit<DetailOptions<TRow, unknown>, "render"> & {
+  render(context: DetailContext<TRow>): VNode | Node | string
 }
 
 /** The slots a template can fill. `empty` lands in the table's `emptyState`. */
@@ -134,6 +141,12 @@ export const Table = defineComponent({
     theme: { type: String as PropType<"light" | "dark">, default: undefined },
 
     rowHref: { type: Function as PropType<(row: AnyRow) => string>, default: undefined },
+    /**
+     * Detail rows: content that opens below a row and spans the table's width.
+     * `render` may return a VNode, so a detail is a real component. Which rows
+     * are open is `state.expanded`; the server renders open rows open.
+     */
+    detail: { type: Object as PropType<VueDetail>, default: undefined },
     rowClassName: { type: Function as PropType<(row: AnyRow, index: number) => string | undefined>, default: undefined },
     emptyMessage: { type: String, default: undefined },
 
@@ -154,6 +167,12 @@ export const Table = defineComponent({
     /** A visible caption above the table. */
     caption: { type: String, default: undefined },
     ariaLabel: { type: String, default: undefined },
+    /**
+     * Base for the ids the table gives its own elements, such as a detail row
+     * its expander points at. Give each table on a page its own when more than
+     * one has detail rows.
+     */
+    id: { type: String, default: undefined },
   },
 
   emits: {
@@ -270,6 +289,24 @@ export const Table = defineComponent({
     */
     const adaptedColumns = computed(adaptColumns)
 
+    /** The detail's renderer, wrapped the same way a cell's is. */
+    const adaptedDetail = computed((): TableOptions["detail"] => {
+      const detail = props.detail
+      if (!detail) return undefined
+      return {
+        ...detail,
+        render: (context) => {
+          const result = detail.render(context)
+          if (!isVNode(result)) return result
+
+          const container = document.createElement("span")
+          renderVNode(result, container)
+          mounted.push(container)
+          return container
+        },
+      }
+    })
+
     const options = (): TableOptions => ({
       data: props.data,
       columns: adaptedColumns.value as TableOptions["columns"],
@@ -301,6 +338,8 @@ export const Table = defineComponent({
       rowHeight: props.rowHeight,
       theme: props.theme,
       rowHref: props.rowHref,
+      detail: adaptedDetail.value,
+      id: props.id,
       rowClassName: props.rowClassName,
       emptyMessage: props.emptyMessage,
       buildHref: props.buildHref,
@@ -351,6 +390,18 @@ export const Table = defineComponent({
             },
           }
         }) as TableOptions["columns"],
+        detail: props.detail
+          ? {
+              ...props.detail,
+              render: (context: DetailContext<AnyRow>) => {
+                const result = props.detail?.render(context)
+                if (!isVNode(result)) return typeof result === "string" ? result : ""
+                const key = String(cellVNodes.size)
+                cellVNodes.set(key, result)
+                return el("span", { "data-tpz-vnode": key })
+              },
+            }
+          : undefined,
         toolbar: slots["toolbar"] ? el("span", { "data-tpz-slot": "toolbar" }) : undefined,
         appendRow: slots["appendRow"] ? el("span", { "data-tpz-slot": "appendRow" }) : undefined,
         footer: slots["footer"] ? el("span", { "data-tpz-slot": "footer" }) : undefined,

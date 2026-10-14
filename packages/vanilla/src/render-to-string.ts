@@ -80,5 +80,21 @@ function serialisable<TRow extends AnyRow>(options: TableOptions<TRow>): TableOp
     }
   })
 
+  // A detail is a renderer like a cell's, and is made safe the same way.
+  const detail = options.detail
+  if (detail) {
+    copy.detail = {
+      ...detail,
+      render: (context) => {
+        try {
+          const result = detail.render(context)
+          return typeof result === "string" || result instanceof ServerNode ? result : ""
+        } catch {
+          return ""
+        }
+      },
+    }
+  }
+
   return copy
 }

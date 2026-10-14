@@ -115,4 +115,20 @@ describe("server rendering", () => {
 
     expect(body).toContain('<a href="/people?sort=name:asc" class="tpz-th-button" aria-label="Sort by Name" draggable="false">')
   })
+
+  it("renders an open detail row already open", () => {
+    const { body } = render(Table, {
+      props: {
+        data: people,
+        columns: ["name"],
+        id: "people",
+        defaultState: { expanded: ["2"] },
+        detail: { render: ({ row }: { row: { name: string } }) => el("p", { text: `About ${row.name}` }) },
+      },
+    })
+
+    expect(body).toContain('<p>About Tom</p>')
+    expect(body).not.toContain("About Ada")
+    expect(body).toContain('aria-controls="people-detail-2"')
+  })
 })
