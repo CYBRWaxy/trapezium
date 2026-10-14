@@ -55,10 +55,11 @@ export function startRowDrag(options: RowDragOptions): () => void {
   let dragging = false
   let target: HTMLElement | undefined
   let position: "before" | "after" = "before"
-  let frame = 0
   let pressTimer: ReturnType<typeof setTimeout> | undefined
+  let lastX = startX
 
-  const scroller = scrollContainer(row)
+  // The rows scroll under a pointer that is holding still, so the mark is moved with them.
+  const scroller = createEdgeScroller(row, () => mark(lastX, lastY))
 
   const begin = () => {
     dragging = true
@@ -66,7 +67,7 @@ export function startRowDrag(options: RowDragOptions): () => void {
     row.closest(".tpz")?.setAttribute("data-row-dragging", "true")
     // A drag that has started owns the finger: from here the page must not scroll under it.
     if (touch) page.addEventListener("touchmove", preventScroll, { passive: false })
-    frame = view.requestAnimationFrame(autoScroll)
+    scroller.start()
   }
 
   const mark = (clientX: number, clientY: number) => {
@@ -81,7 +82,9 @@ export function startRowDrag(options: RowDragOptions): () => void {
   }
 
   const onMove = (move: PointerEvent) => {
+    lastX = move.clientX
     lastY = move.clientY
+    scroller.update(move.clientY)
     if (!dragging) {
       const distance = Math.hypot(move.clientX - startX, move.clientY - startY)
       // A finger that moves before the long press is up is scrolling, not dragging.
@@ -110,26 +113,9 @@ export function startRowDrag(options: RowDragOptions): () => void {
     stop()
   }
 
-  // While dragging the pointer can sit still near an edge, so the scrolling runs on frames, not on moves.
-  const autoScroll = () => {
-    if (!dragging) return
-    const bounds = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: view.innerHeight }
-    const delta =
-      lastY < bounds.top + EDGE
-        ? -SPEED * Math.min(1, (bounds.top + EDGE - lastY) / EDGE)
-        : lastY > bounds.bottom - EDGE
-          ? SPEED * Math.min(1, (lastY - (bounds.bottom - EDGE)) / EDGE)
-          : 0
-    if (delta !== 0) {
-      if (scroller) scroller.scrollTop += delta
-      else view.scrollBy(0, delta)
-    }
-    frame = view.requestAnimationFrame(autoScroll)
-  }
-
   function stop() {
     clearTimeout(pressTimer)
-    view?.cancelAnimationFrame(frame)
+    scroller.stop()
     page.removeEventListener("pointermove", onMove)
     page.removeEventListener("pointerup", onUp)
     page.removeEventListener("pointercancel", stop)
@@ -152,6 +138,56 @@ export function startRowDrag(options: RowDragOptions): () => void {
 
 function preventScroll(event: Event) {
   event.preventDefault()
+}
+
+/**
+ * Scrolls the table — or the page, when the table grows with it — while a
+ * pointer held near the top or bottom edge says to, faster the closer it is.
+ * Runs on animation frames rather than on pointer moves, because a pointer
+ * held still at the edge is exactly when it has to keep going. `onScroll` is
+ * told after every step, for whatever was under the pointer to be found again.
+ */
+export function createEdgeScroller(
+  row: HTMLElement,
+  onScroll: () => void,
+): { start(): void; update(clientY: number): void; stop(): void } {
+  const view = row.ownerDocument.defaultView
+  const container = scrollContainer(row)
+  let y = Number.NaN
+  let frame = 0
+  let running = false
+
+  const step = () => {
+    if (!running || !view) return
+    const bounds = container ? container.getBoundingClientRect() : { top: 0, bottom: view.innerHeight }
+    const delta =
+      y < bounds.top + EDGE
+        ? -SPEED * Math.min(1, (bounds.top + EDGE - y) / EDGE)
+        : y > bounds.bottom - EDGE
+          ? SPEED * Math.min(1, (y - (bounds.bottom - EDGE)) / EDGE)
+          : 0
+    if (delta !== 0) {
+      if (container) container.scrollTop += delta
+      else view.scrollBy(0, delta)
+      onScroll()
+    }
+    frame = view.requestAnimationFrame(step)
+  }
+
+  return {
+    start() {
+      if (running || !view) return
+      running = true
+      frame = view.requestAnimationFrame(step)
+    },
+    update(clientY) {
+      y = clientY
+    },
+    stop() {
+      running = false
+      view?.cancelAnimationFrame(frame)
+    },
+  }
 }
 
 /** The table's own scroll area when it scrolls up and down, or nothing — the page scrolls instead. */

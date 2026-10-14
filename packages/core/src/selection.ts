@@ -24,6 +24,29 @@ export function resolveSelection<TRow extends AnyRow>(
 }
 
 /**
+ * A selection made of a range on top of what was selected before it began —
+ * what Shift with an arrow key, and a drag across rows, build.
+ *
+ * The range runs from `anchor` to `target` in `ids`, either way round, and is
+ * recomputed from `base` every time, so moving back towards the anchor gives
+ * rows up again instead of leaving them selected. An anchor that is not in
+ * `ids` starts the range at the target.
+ */
+export function rangeSelection(
+  base: readonly string[],
+  ids: readonly string[],
+  anchor: string | undefined,
+  target: string,
+): string[] {
+  const to = ids.indexOf(target)
+  if (to === -1) return [...base]
+  const found = anchor === undefined ? -1 : ids.indexOf(anchor)
+  const from = found === -1 ? to : found
+  const [low, high] = from < to ? [from, to] : [to, from]
+  return [...new Set([...base, ...ids.slice(low, high + 1)])]
+}
+
+/**
  * The ids a person may actually select, in row order.
  *
  * With no `isSelectable` that is every row; with one, the rows it allows. This

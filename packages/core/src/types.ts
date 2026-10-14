@@ -789,6 +789,21 @@ export type SelectionOptions<TRow = AnyRow> = {
   isSelectable?(row: TRow, index: number): boolean
   /** Fires with the ids and the rows behind them, whenever the selection changes. */
   onChange?(ids: string[], rows: TRow[]): void
+  /**
+   * What the header checkbox selects: `"page"`, the rows on screen — the
+   * default — or `"matching"`, every row the filters and search leave, on
+   * every page. In server mode `"matching"` asks `server.all` for the rows,
+   * since the table holds only one page of them.
+   */
+  selectAll?: "page" | "matching"
+  /**
+   * Select rows by pressing on one and dragging across the others. A press
+   * that does not move is still a click; one on a control in the row — a link,
+   * a button, the drag handle — is left to it. Shift extends the selection from
+   * the last row chosen instead of replacing it. Defaults to `false`, because
+   * a drag across a table is also how people select its text to copy.
+   */
+  dragSelect?: boolean
 }
 
 /**

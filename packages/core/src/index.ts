@@ -175,14 +175,16 @@ export {
   toggleSort,
 } from "./state.js"
 
-export { resolveSelection, selectableIds } from "./selection.js"
+export { rangeSelection, resolveSelection, selectableIds } from "./selection.js"
 export { INTERACTIVE_SELECTOR, isInteractiveTarget } from "./interaction.js"
 export { expandableIds, isDetailOpen } from "./detail.js"
 export { getRowsWithChildren, parentIdsWithChildren } from "./children.js"
 export { pinnedOffset, pinnedRowId } from "./pinned.js"
 export { applyRowMove, canReorderRows, moveRowTo, stepRow } from "./reorder.js"
 export type { RowMove, RowReorderOptions } from "./reorder.js"
-export { startRowDrag } from "./drag.js"
+export { createEdgeScroller, startRowDrag } from "./drag.js"
+export { startDragSelect } from "./drag-select.js"
+export type { DragSelectOptions } from "./drag-select.js"
 export type { RowDragOptions } from "./drag.js"
 export type { PinnedSide } from "./pinned.js"
 export { entryCell, isNavigationKey, nextCell } from "./navigation.js"

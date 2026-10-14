@@ -1,6 +1,26 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { resolveSelection, selectableIds } from "./selection.js"
+import { rangeSelection, resolveSelection, selectableIds } from "./selection.js"
+
+describe("rangeSelection", () => {
+  const letters = ["a", "b", "c", "d", "e"]
+
+  it("selects from the anchor to the target, either way round, on top of what was there", () => {
+    expect(rangeSelection(["x"], letters, "b", "d")).toEqual(["x", "b", "c", "d"])
+    expect(rangeSelection([], letters, "d", "b")).toEqual(["b", "c", "d"])
+  })
+
+  it("gives rows up again as the range shrinks back towards the anchor", () => {
+    expect(rangeSelection([], letters, "b", "e")).toEqual(["b", "c", "d", "e"])
+    expect(rangeSelection([], letters, "b", "c")).toEqual(["b", "c"])
+  })
+
+  it("starts at the target with no anchor on screen, and changes nothing for a target that is not", () => {
+    expect(rangeSelection([], letters, undefined, "c")).toEqual(["c"])
+    expect(rangeSelection([], letters, "gone", "c")).toEqual(["c"])
+    expect(rangeSelection(["a"], letters, "b", "gone")).toEqual(["a"])
+  })
+})
 
 type Row = { id: string; archived: boolean }
 
