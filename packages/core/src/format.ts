@@ -106,14 +106,23 @@ export function formatPercent(value: unknown, context: FormatContext & FormatOpt
  * shows every amount at a hundredth of its real value.
  */
 export function minorUnitScale(currency: string, locale = "en"): number {
+  // Asked once per currency and locale: it is asked for every amount formatted, and the answer never changes.
+  const key = `${locale}|${currency}`
+  const known = minorUnitScales.get(key)
+  if (known !== undefined) return known
+
+  let scale = 100
   try {
-    const digits = numberFormat(locale, { style: "currency", currency }).resolvedOptions()
-      .maximumFractionDigits
-    return 10 ** (digits ?? 2)
+    const digits = numberFormat(locale, { style: "currency", currency }).resolvedOptions().maximumFractionDigits
+    scale = 10 ** (digits ?? 2)
   } catch {
-    return 100
+    // An unknown currency code is taken to have cents, as most do.
   }
+  minorUnitScales.set(key, scale)
+  return scale
 }
+
+const minorUnitScales = new Map<string, number>()
 
 export function formatCurrency(value: unknown, context: FormatContext & FormatOptions): string {
   const raw = toNumber(value)

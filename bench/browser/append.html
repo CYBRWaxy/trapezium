@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trapezium — appending pages</title>
+    <link rel="stylesheet" href="../../packages/core/styles.css" />
+    <style>
+      body { max-width: 84rem; margin: 0 auto; padding: 2rem 1.5rem; font-family: system-ui, sans-serif; }
+      #results { font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; white-space: pre; margin-bottom: 1.5rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Appending pages</h1>
+    <p>
+      A hundred thousand rows held in the browser, shown with "load more": what it costs to add the
+      next page as the rows on screen grow, and how big the document gets. Run
+      <code>window.appendBench()</code>.
+    </p>
+    <div id="results"></div>
+    <div id="table"></div>
+
+    <script src="../../packages/vanilla/dist/trapezium.global.js"></script>
+    <script type="module">
+      import { makeRows, columns, customTypes } from "../dataset.mjs"
+
+      const { createTable } = window.Trapezium
+
+      /** Milliseconds to add a page and have the browser lay it out. */
+      function time(work) {
+        const started = performance.now()
+        work()
+        void document.querySelector("#table").offsetHeight
+        return performance.now() - started
+      }
+
+      window.appendBench = (size = 100_000, pageSize = 100, marks = [1, 10, 50, 100, 200]) => {
+        const host = document.querySelector("#table")
+        host.replaceChildren()
+        const rows = makeRows(size, 3)
+        const lines = [`${size.toLocaleString()} rows × ${columns.length} columns, ${pageSize} a page, "load more"`, ""]
+
+        const table = createTable(host, {
+          data: rows,
+          columns,
+          types: customTypes,
+          getRowId: (row) => row.id,
+          pagination: { mode: "loadMore", pageSize },
+          maxHeight: 460,
+        })
+
+        for (let page = 2; page <= Math.max(...marks); page += 1) {
+          const took = time(() => table.setState({ page }))
+          if (marks.includes(page)) {
+            lines.push(
+              `  page ${String(page).padStart(4)}: ${String(page * pageSize).padStart(6)} rows on screen, ` +
+                `added in ${took.toFixed(1).padStart(6)} ms, ${host.querySelectorAll("*").length.toLocaleString().padStart(9)} elements`,
+            )
+          }
+        }
+
+        const sort = time(() => table.setState({ sort: [{ key: "name", direction: "asc" }] }))
+        lines.push("", `  then sort, rebuilding every row on screen: ${sort.toFixed(1)} ms`)
+        table.destroy()
+        document.querySelector("#results").textContent = lines.join("\n")
+        return lines.join("\n")
+      }
+    </script>
+  </body>
+</html>

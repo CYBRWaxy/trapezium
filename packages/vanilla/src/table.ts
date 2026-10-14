@@ -3,6 +3,7 @@ import {
   DEFAULT_STATE,
   addSort,
   createPipelineCache,
+  warmSearchWhenIdle,
   canResetSort,
   columnSearchText,
   copyText,
@@ -819,6 +820,27 @@ export function createTable<TRow extends AnyRow>(
   // What the pipeline worked out last time, so a page turn, a tick or a moved cursor costs nothing.
   const pipelineCache = createPipelineCache<TRow>()
 
+  /*
+    With a search box over a large table of its own data, every row's search
+    text is built in idle time, so the first keystroke costs what the next
+    does. Started again only when what it builds from changes.
+  */
+  let warming: { data: readonly TRow[]; columns: unknown; stop: () => void } | undefined
+
+  function warmSearchIfWanted(columns: ResolvedColumn<TRow, Node | string>[]) {
+    const wanted = Boolean(settings.search) && !settings.server
+    const data = viewData()
+    if (warming && warming.data === data && warming.columns === columnsKey(columns) && wanted) return
+    warming?.stop()
+    warming = wanted
+      ? { data, columns: columnsKey(columns), stop: warmSearchWhenIdle(data, columns, registry(), formatting()) }
+      : undefined
+  }
+
+  function columnsKey(columns: ResolvedColumn<TRow, Node | string>[]): string {
+    return columns.map((column) => `${column.key}:${column.type}:${String(column.searchable)}`).join("|")
+  }
+
   /** The data, with a move that is still being saved applied to it. */
   function viewData(): readonly TRow[] {
     const data = settings.data
@@ -949,6 +971,7 @@ export function createTable<TRow extends AnyRow>(
   function renderView(reveal: string | undefined): boolean {
     const { columns, hidden, rows, total, pageCount, filtered, pagination, page, info } = current(reveal)
     renderedEditable = hasEditableColumns(columns)
+    warmSearchIfWanted(columns)
 
     // The page shown is the revealed row's, so the state says so from here on.
     const revealed = pagination !== undefined && page !== state.page
@@ -4095,6 +4118,8 @@ export function createTable<TRow extends AnyRow>(
       if (render()) notify()
     },
     destroy() {
+      warming?.stop()
+      warming = undefined
       if (editing) {
         editing.editor.dispose()
         editing = undefined

@@ -234,6 +234,62 @@ export function searchRows<TRow extends AnyRow, TNode = unknown>(
   const query = search.trim()
   if (query === "") return [...rows]
 
+  const plan = searchPlan(columns, types, format)
+  if (!plan) return [...rows]
+
+  /*
+    Each row is searched as one string: every searchable cell's stored value
+    and shown text, folded, joined by a character nobody types. Built the first
+    time a row is searched — or earlier, in idle time, by `warmSearch` — and
+    remembered against it, so a keystroke after the first is one `includes` a
+    row rather than a fold and a comparison for every cell. The separator keeps
+    a match from running from one cell into the next.
+  */
+  const needle = foldText(query)
+  return rows.filter((row) => searchText(row, plan.signature, () => plan.build(row)).includes(needle))
+}
+
+/**
+ * Builds the search text of rows before anyone searches, a slice at a time,
+ * so the first keystroke in a large table costs what every later one does.
+ *
+ * Works from `from` until `budget` milliseconds have passed, and returns where
+ * it got to — `rows.length` when every row is ready. An adapter calls it from
+ * idle callbacks while the table has a search box; nothing needs to call it
+ * for search to work.
+ */
+export function warmSearch<TRow extends AnyRow, TNode = unknown>(
+  rows: readonly TRow[],
+  columns: readonly ResolvedColumn<TRow, TNode>[],
+  types: TypeRegistry,
+  format: FormatContext,
+  from = 0,
+  budget = 8,
+): number {
+  const plan = searchPlan(columns, types, format)
+  if (!plan) return rows.length
+
+  const deadline = Date.now() + budget
+  let index = from
+  while (index < rows.length) {
+    const row = rows[index]
+    if (row !== undefined) searchText(row, plan.signature, () => plan.build(row))
+    index += 1
+    // Checked every few rows: reading the clock costs more than building one row's text.
+    if (index % 32 === 0 && Date.now() >= deadline) break
+  }
+  return index
+}
+
+/**
+ * How a row's search text is built for these columns, and the signature it is
+ * remembered under — or nothing when no column is searchable.
+ */
+function searchPlan<TRow extends AnyRow, TNode>(
+  columns: readonly ResolvedColumn<TRow, TNode>[],
+  types: TypeRegistry,
+  format: FormatContext,
+): { signature: string; build: (row: TRow) => string } | undefined {
   /*
     Everything that does not depend on the row is worked out once. Building a
     context object per cell — twenty-six columns times ten thousand rows — costs
@@ -255,21 +311,12 @@ export function searchRows<TRow extends AnyRow, TNode = unknown>(
       }
     })
 
-  if (searchable.length === 0) return [...rows]
+  if (searchable.length === 0) return undefined
 
-  /*
-    Each row is searched as one string: every searchable cell's stored value
-    and shown text, folded, joined by a character nobody types. Built the first
-    time a row is searched and remembered against it, so a keystroke after the
-    first is one `includes` a row rather than a fold and a comparison for every
-    cell — about fifty times less work at twenty-six columns. The separator
-    keeps a match from running from one cell into the next.
-  */
-  const needle = foldText(query)
   const signature = searchable.map((column) => column.cacheKey).join(SEPARATOR)
-
-  return rows.filter((row) =>
-    searchText(row as object, signature, () => {
+  return {
+    signature,
+    build: (row) => {
       const parts: string[] = []
       for (const column of searchable) {
         const value = column.accessor(row)
@@ -290,12 +337,12 @@ export function searchRows<TRow extends AnyRow, TNode = unknown>(
         }
 
         if (!column.formats) continue
-        const text = cachedText(row as object, column.cacheKey, column.type, value, column.context)
+        const text = cachedText(row, column.cacheKey, column.type, value, column.context)
         if (text !== "") parts.push(foldText(text))
       }
       return parts.join(SEPARATOR)
-    }).includes(needle),
-  )
+    },
+  }
 }
 
 /** Between the cells of a row's search text: a control character, which nobody types into a search box. */

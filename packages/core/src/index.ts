@@ -126,9 +126,11 @@ export {
   rowsLackIds,
   searchRows,
   sortRows,
+  warmSearch,
 } from "./pipeline.js"
 export type { PipelineOptions } from "./pipeline.js"
 export { createPipelineCache } from "./pipeline-cache.js"
+export { WARM_SEARCH_FROM, warmSearchWhenIdle } from "./idle.js"
 export type { PipelineCache } from "./pipeline-cache.js"
 
 export {

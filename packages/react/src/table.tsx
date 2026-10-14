@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
   INTERACTIVE_SELECTOR,
+  warmSearchWhenIdle,
   clearSelection,
   rangeSelection,
   startDragSelect,
@@ -1093,6 +1094,21 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
       state.selection.map((id) => byId.get(id)).filter((row): row is TRow => row !== undefined),
     )
   }, [state.selection, rows, rowIds, selection])
+
+  /*
+    With a search box over a large table of its own data, every row's search
+    text is built while the browser is idle, so the first keystroke costs what
+    every later one does. Nothing happens on a server, and nothing at all for a
+    table without a search box.
+  */
+  const searching = search !== undefined && !table.server
+  useEffect(() => (searching ? warmSearchWhenIdle(displayData, columns, types, format) : undefined), [
+    searching,
+    displayData,
+    columns,
+    types,
+    format,
+  ])
 
   /* ── Export ────────────────────────────────────────────────────────────── */
 
