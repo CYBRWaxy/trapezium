@@ -1,6 +1,12 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react"
 import {
   INTERACTIVE_SELECTOR,
+  applyRowMove,
+  canReorderRows,
+  moveRowTo,
+  resolveRowId,
+  startRowDrag,
+  stepRow,
   canResetSort,
   editValuesEqual,
   editorKind,
@@ -38,6 +44,7 @@ import {
   toggleSelection,
   type AnyRow,
   type CellFocus,
+  type RowMove,
   type SelectOption,
   type TableState,
 } from "@trapezium/core"
@@ -99,7 +106,21 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
     detail,
   } = props
 
-  const table = useTable(props)
+  /*
+    A move still being saved is shown by applying it to the data, so the rows
+    — and a parent's children with it — are where they were dropped until the
+    caller's data says otherwise. Held against the data it was made on: new
+    data is the answer, and the move is forgotten.
+  */
+  const [pendingMove, setPendingMove] = useState<{ data: readonly TRow[]; move: RowMove<TRow> } | undefined>()
+  const displayData = useMemo(() => {
+    if (!pendingMove || pendingMove.data !== data) return data
+    const ids = data.map((row, index) => resolveRowId(row, index, getRowId))
+    return applyRowMove(data, ids, pendingMove.move)
+  }, [data, pendingMove, getRowId])
+  const viewProps = useMemo(() => (displayData === data ? props : { ...props, data: displayData }), [props, data, displayData])
+
+  const table = useTable(viewProps)
   const {
     rows,
     matchedRows,
@@ -237,7 +258,8 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
   // force at that moment rather than the ones in force when it was bound.
   const latestState = useRef(state)
   latestState.current = state
-  const columnCount = columns.length + (selection ? 1 : 0) + (detail ? 1 : 0)
+  const reorder = props.rowReorder
+  const columnCount = columns.length + (selection ? 1 : 0) + (detail ? 1 : 0) + (reorder ? 1 : 0)
 
   /*
     The base every generated element id is built from. The caller's `id` when
@@ -382,8 +404,8 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
     tab order — the active cell when it is on screen, the first cell otherwise.
   */
   const navColumns = useMemo(
-    () => [...(selection ? ["__select"] : []), ...(detail ? ["__expand"] : []), ...visibleKeys],
-    [selection, detail, visibleKeys],
+    () => [...(reorder ? ["__drag"] : []), ...(selection ? ["__select"] : []), ...(detail ? ["__expand"] : []), ...visibleKeys],
+    [reorder, selection, detail, visibleKeys],
   )
   /* Pinned rows, with ids that cannot collide with the data's fallbacks. */
   const pinnedTop = useMemo(
@@ -467,6 +489,13 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
         startEdit(rowId, key, seed ?? undefined)
         return
       }
+    }
+
+    // Alt with an arrow moves the row, from any of its cells.
+    if (reorder && event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault()
+      onHandleStep(rowId, event.key === "ArrowUp" ? -1 : 1)
+      return
     }
 
     if (isNavigationKey(event.key) && !event.altKey && !event.shiftKey) {
@@ -692,6 +721,108 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
     />
   )
 
+  /* ── Moving rows ───────────────────────────────────────────────────────── */
+
+  const reorderable = reorder !== undefined && canReorderRows(state.sort)
+  const [announcement, setAnnouncement] = useState("")
+  const refocusHandle = useRef<string | undefined>(undefined)
+
+  /*
+    The rows a row moves among: its siblings. For a row on its own or a
+    parent, every top-level row that matches — the whole list, not only this
+    page, so a row dropped at the top of page two comes after the last row of
+    page one. For a child, the other children of its parent. In server mode
+    the page is all there is.
+  */
+  const dataIds = useMemo(() => new Set(data.map((row, index) => resolveRowId(row, index, getRowId))), [data, getRowId])
+  const parentOf = useCallback(
+    (row: TRow): string | undefined => {
+      const parent = props.getParentId?.(row)
+      return parent !== null && parent !== undefined && parent !== "" && dataIds.has(String(parent)) ? String(parent) : undefined
+    },
+    [props.getParentId, dataIds],
+  )
+
+  const siblingsOf = (rowId: string): { ids: string[]; parentId: string | undefined } => {
+    const row = rowsById.get(rowId)
+    const parentId = row === undefined ? undefined : parentOf(row)
+    const pool = table.server ? rows : matchedRows
+    const ids: string[] = []
+    pool.forEach((candidate, index) => {
+      if (parentOf(candidate) === parentId) ids.push(resolveRowId(candidate, index, getRowId))
+    })
+    return { ids, parentId }
+  }
+
+  const reportMove = (rowId: string, result: { afterId: string | null; beforeId: string | null; order: string[] }, parentId: string | undefined) => {
+    const row = rowsById.get(rowId)
+    if (!row || !reorder) return
+    const move: RowMove<TRow> = { rowId, row, afterId: result.afterId, beforeId: result.beforeId, ...(parentId ? { parentId } : {}) }
+    setAnnouncement(`Moved to position ${String(result.order.indexOf(rowId) + 1)} of ${String(result.order.length)}`)
+
+    const outcome = reorder.onReorder(move)
+    if (isPromiseLike(outcome)) {
+      const made = { data, move }
+      setPendingMove(made)
+      const settle = () => setPendingMove((current) => (current === made ? undefined : current))
+      outcome.then(settle, () => {
+        settle()
+        setAnnouncement("The move was not saved")
+      })
+    }
+  }
+
+  const reorderRef = useRef({ siblingsOf, reportMove, reorderable, rowsById })
+  reorderRef.current = { siblingsOf, reportMove, reorderable, rowsById }
+
+  const onHandleDown = useCallback((id: string, event: React.PointerEvent<HTMLElement>) => {
+    const tr = event.currentTarget.closest<HTMLElement>("tr")
+    if (!tr || !reorderRef.current.reorderable) return
+    const { ids, parentId } = reorderRef.current.siblingsOf(id)
+    const draggedIsChild = parentId !== undefined
+
+    startRowDrag({
+      event: event.nativeEvent,
+      row: tr,
+      targetFor: (element) => {
+        const over = element.closest<HTMLElement>("tr[data-row-id]")
+        if (!over || over.closest("tbody[data-pinned]") || !tr.parentElement?.contains(over)) return undefined
+        // A parent is dropped beside a parent: a child row it passes over stands for its own parent.
+        const overId = over.dataset["rowId"] ?? ""
+        if (ids.includes(overId)) return over
+        if (!draggedIsChild && over.dataset["depth"] === "1") {
+          let previous = over.previousElementSibling
+          while (previous && (previous as HTMLElement).dataset["depth"] === "1") previous = previous.previousElementSibling
+          return previous instanceof HTMLElement && ids.includes(previous.dataset["rowId"] ?? "") ? previous : undefined
+        }
+        return undefined
+      },
+      onDrop: (target, position) => {
+        const result = moveRowTo(ids, id, target.dataset["rowId"] ?? "", position)
+        if (result) reorderRef.current.reportMove(id, result, parentId)
+      },
+    })
+  }, [])
+
+  const onHandleStep = useCallback((id: string, delta: -1 | 1) => {
+    if (!reorderRef.current.reorderable) return
+    const { ids, parentId } = reorderRef.current.siblingsOf(id)
+    const result = stepRow(ids, id, delta)
+    if (!result) return
+    refocusHandle.current = id
+    reorderRef.current.reportMove(id, result, parentId)
+  }, [])
+
+  // The keyboard stays on the row it moved.
+  useLayoutEffect(() => {
+    const id = refocusHandle.current
+    if (id === undefined) return
+    refocusHandle.current = undefined
+    const handle = cellElement(id, "__drag")?.querySelector<HTMLElement>(".tpz-drag-handle")
+    if (handle) handle.focus()
+    else cellElement(id, "__drag")?.focus()
+  })
+
   /* ── Pinned rows ───────────────────────────────────────────────────────── */
 
   /*
@@ -752,6 +883,7 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
             edits={edits[id]}
             pinned={side}
             pinnedOffset={pinnedPx[`${side}:${id}`] ?? pinnedOffset(index, entries.length, side)}
+            handle={reorder ? handleOf(false, true) : undefined}
           />
         ))}
       </tbody>
@@ -938,6 +1070,18 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
 
             <thead className={classes("thead")} ref={headRef}>
               <tr className={classes("headerRow")}>
+                {reorder && (
+                  <th
+                    scope="col"
+                    className="tpz-th tpz-drag-cell"
+                    data-pin="start"
+                    data-key="__drag"
+                    style={{ left: pinOffsets["__drag"] ?? 0 }}
+                  >
+                    <span className="tpz-sr">Move</span>
+                  </th>
+                )}
+
                 {selection && (
                   <th
                     scope="col"
@@ -1089,6 +1233,9 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
                     tree={treeOf(rowInfo?.[rowIndex], folded.has(id))}
                     onToggleChildren={rowInfo ? toggleChildren : undefined}
                     treegrid={treegrid}
+                    handle={reorder ? handleOf(reorder.canDrag ? reorder.canDrag(row) : true, !reorderable) : undefined}
+                    onHandleDown={reorder ? onHandleDown : undefined}
+                    onHandleStep={reorder ? onHandleStep : undefined}
                   />
                   {mountDetail && detail && (
                     <DetailRow
@@ -1134,6 +1281,12 @@ export function Table<TRow extends AnyRow>(props: TableProps<TRow>) {
         </div>
 
         {footer && <div className={classes("footer")}>{footer}</div>}
+
+        {reorder && (
+          <div className="tpz-sr" role="status" aria-live="polite">
+            {announcement}
+          </div>
+        )}
 
         {pagination && (
           <Pagination
@@ -1195,6 +1348,16 @@ function treeOf(
     TREE_CACHE.set(key, tree)
   }
   return tree
+}
+
+const HANDLE_ON = { draggable: true, disabled: false }
+const HANDLE_OFF = { draggable: true, disabled: true }
+const NO_HANDLE = { draggable: false, disabled: true }
+
+/** A row's handle as one of three shared objects, so a memoised row sees the same one each render. */
+function handleOf(draggable: boolean, disabled: boolean): { draggable: boolean; disabled: boolean } {
+  if (!draggable) return NO_HANDLE
+  return disabled ? HANDLE_OFF : HANDLE_ON
 }
 
 let warnedAboutEditing = false

@@ -33,6 +33,8 @@ export type TableSlots = {
   row: string
   cell: string
   selectCell: string
+  /** The cell holding a row's drag handle, when rows can be moved. */
+  dragCell: string
   /** The cell holding a row's expander, when the table has detail rows. */
   expandCell: string
   /** The row a detail opens into. */
@@ -61,6 +63,7 @@ export const SLOT_CLASSES: Record<keyof TableSlots, string> = {
   row: "tpz-tr",
   cell: "tpz-td",
   selectCell: "tpz-td tpz-select-cell",
+  dragCell: "tpz-td tpz-drag-cell",
   expandCell: "tpz-td tpz-expand-cell",
   detailRow: "tpz-tr tpz-detail-row",
   detailCell: "tpz-td tpz-detail-cell",

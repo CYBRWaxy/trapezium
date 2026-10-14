@@ -96,6 +96,16 @@ export type RowProps<TRow extends AnyRow> = {
   pinned?: "top" | "bottom"
   /** How far it sits from its edge, past the pinned rows between it and the edge. */
   pinnedOffset?: string
+  /**
+   * The drag handle, when rows can be moved: whether this row has one, and
+   * whether moving is off just now (the table is sorted). Absent when rows
+   * cannot be moved at all, so there is no handle column.
+   */
+  handle?: { draggable: boolean; disabled: boolean }
+  /** A press on the handle. Identity-stable, like `onToggle`. */
+  onHandleDown?: (id: string, event: React.PointerEvent<HTMLElement>) => void
+  /** Alt with an arrow key on the handle: one place up or down. Identity-stable. */
+  onHandleStep?: (id: string, delta: -1 | 1) => void
 }
 
 function RowInner<TRow extends AnyRow>({
@@ -131,6 +141,9 @@ function RowInner<TRow extends AnyRow>({
   treegrid,
   pinned,
   pinnedOffset,
+  handle,
+  onHandleDown,
+  onHandleStep,
 }: RowProps<TRow>) {
   // Only the active cell is in the tab order; the rest are reached by arrow.
   const tabIndex = (key: string) => (activeKey === undefined ? undefined : activeKey === key ? 0 : -1)
@@ -166,6 +179,40 @@ function RowInner<TRow extends AnyRow>({
           : undefined
       }
     >
+      {handle && (
+        <td
+          className={classes("dragCell")}
+          data-pin="start"
+          data-key="__drag"
+          tabIndex={tabIndex("__drag")}
+          style={{ left: pinOffsets["__drag"] ?? 0 }}
+        >
+          {handle.draggable && !pinned && (
+            <button
+              type="button"
+              className="tpz-drag-handle"
+              tabIndex={controlTabIndex}
+              aria-label={`Move row ${String(rowIndex + 1)}`}
+              aria-disabled={handle.disabled || undefined}
+              title={handle.disabled ? "Clear the sort to move rows" : "Drag to move, or Alt with an arrow key"}
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => {
+                if (handle.disabled || event.button !== 0) return
+                onHandleDown?.(id, event)
+              }}
+              onKeyDown={(event) => {
+                if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return
+                event.preventDefault()
+                event.stopPropagation()
+                if (!handle.disabled) onHandleStep?.(id, event.key === "ArrowUp" ? -1 : 1)
+              }}
+            >
+              <Icon name="grip" size={14} />
+            </button>
+          )}
+        </td>
+      )}
+
       {selectionMode && (
         <td
           className={classes("selectCell")}

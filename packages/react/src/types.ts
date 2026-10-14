@@ -16,6 +16,7 @@ import type {
   ResolvedColumn,
   RowHeight,
   RowInfo,
+  RowReorderOptions,
   SelectionOptions,
   ServerSource,
   SortOptions,
@@ -328,6 +329,22 @@ export type TableProps<TRow extends AnyRow = AnyRow> = {
    * `edit.pinned`.
    */
   pinnedRows?: PinnedRows<TRow>
+
+  /**
+   * Rows moved by hand: a drag handle leads each row, and Alt with the up or
+   * down arrow moves the row from the keyboard.
+   *
+   * ```tsx
+   * rowReorder={{ onReorder: ({ rowId, afterId, beforeId }) => move(rowId, afterId, beforeId) }}
+   * ```
+   *
+   * The table never reorders `data`: it reports the row and its new
+   * neighbours, and shows the order the data then has — or, if `onReorder`
+   * returns a promise, the new order until it settles. Offered only while the
+   * table is unsorted. A child row moves among its siblings only, and a parent
+   * takes its children with it. `canDrag` keeps some rows where they are.
+   */
+  rowReorder?: RowReorderOptions<TRow>
 
   /** Makes each row a link. The leading cell becomes an anchor. */
   rowHref?: (row: TRow) => string
