@@ -47,7 +47,7 @@ columnMenu ·
 columnControl · pagination · selection · onSelectionChange(ids, rows) · export · density ·
 densityControl · responsive("scroll"|"cards") · stickyHeader · maxHeight ·
 rowHeight("fixed"|"auto"|number) · types · format ·
-rowHref(row) · onRowClick(row, event) · rowClassName(row, index) · emptyState · emptyMessage ·
+rowHref(row) · onRowClick(row, event) · rowClassName(row, index) · detail · emptyState · emptyMessage ·
 toolbar · appendRow · footer · buildHref(state) · linkComponent (React) · onNavigate(href, event) ·
 className · classNames ·
 unstyled · theme("light"|"dark") · id · aria-label · caption
@@ -224,6 +224,29 @@ A row `isSelectable` refuses gets a disabled checkbox; the header checkbox and s
 it. Ids come from getRowId (row.id, then row.uuid, then the index). The header selects the page on
 screen, not every page. Same forms in every adapter.
 
+## Detail rows (master/detail)
+
+    detail={{ render: ({ row, rowId, rowIndex, collapse }) => node,
+              canExpand: (row) => boolean,   // default: every row
+              keepMounted: false,            // keep a closed detail mounted (hidden) so it does not refetch
+              toggleOnRowClick: false }}     // a click anywhere on the row toggles it too
+
+An expander column (a chevron button per row with aria-expanded/aria-controls, and one in the
+header for every row on the page) leads the table. Any number of rows open at once. Open rows are
+state.expanded: string[] (row ids) — controlled, saved, and URL-serialisable when asked for:
+stateToQueryString(state, { include: [...DEFAULT_URL_KEYS, "expanded"] }) writes `open=id1,id2`.
+The server renders open rows open. A detail row spans every column, is as tall as its content
+(normal flow, nothing measured), keeps its content to the frame's width, and is never counted,
+paged, sorted, selected or exported; it follows its row through sorting and paging. Append
+pagination leaves open details alone. In cards layout it opens under the card. keepMounted mounts
+on first open, then hides on close. In code: toggleExpanded(state, id) · setExpanded(state, ids,
+open) · collapseAll(state) · isExpanded(state, id). Vue: render may return a VNode; plain JS and
+Svelte: a node or a string. Pass `id` when a page has several tables with detail rows.
+
+onRowClick (and toggleOnRowClick) ignore clicks on controls inside the row: a[href], button,
+input, select, textarea, label, [role=menu*], [role=button] and the like, or anything with
+data-tpz-interactive. isInteractiveTarget(target, row) is exported.
+
 ## Slots
 
 toolbar · appendRow · footer · emptyState — React nodes in React; `#toolbar` `#appendRow` `#footer`
@@ -240,7 +263,10 @@ One serialisable object:
 
     { sort: [{key, direction}], filters: [{key, operator, value}], match: "all"|"any", search,
       page /* 1-based */, pageSize, selection: string[], order: string[], hidden: string[],
-      widths: Record<string, number>, pinned: Record<string, "start"|"end">, density }
+      widths: Record<string, number>, pinned: Record<string, "start"|"end">, density,
+      expanded /* row ids with an open detail */ }
+
+Keys added since 0.3.0 (expanded) are optional in the TableState type and default to [].
 
 Controlled with `state` + `onStateChange`; uncontrolled with `defaultState`. A controlled `state`
 controls exactly the keys it has.
@@ -297,7 +323,8 @@ CSS custom properties on `.tpz` (--tpz-surface, --tpz-muted, --tpz-border, --tpz
 cell (see Cell renderers). Dark mode follows the page's color-scheme, or `.dark` /
 [data-theme="dark"] on an ancestor, or theme="dark" on the table.
 classNames={{ root, frame, toolbar, search, scroll, table, thead, tbody, headerRow, headerCell, row,
-cell, selectCell, pagination, empty, footer }} adds classes; `unstyled` drops the defaults. Same in
+cell, selectCell, expandCell, detailRow, detailCell, pagination, empty, footer }} adds classes;
+`unstyled` drops the defaults. Same in
 every adapter.
 responsive="cards" stacks rows below 40rem of container width, in pure CSS.
 Bridge to shadcn/ui: import "@trapezium/react/themes/shadcn.css" when the app's tokens are whole
@@ -314,8 +341,7 @@ headerSearchDebounce }.
 
 ## Not included, on purpose
 
-Grouping, aggregation, pivoting, tree data, formulas, Excel export. Inline editing and expandable
-rows are planned but not in v1.
+Grouping, aggregation, pivoting, multi-level tree data, formulas, Excel export.
 
 ## Migrating from AG Grid
 
@@ -339,5 +365,5 @@ and no ref to call methods on — everything is state, and `onStateChange` repor
 ## Docs
 
 docs/getting-started.md docs/columns.md docs/types.md docs/filtering.md docs/pagination.md
-docs/selection.md docs/rendering.md docs/styling.md docs/server-data.md docs/ssr.md
+docs/selection.md docs/rows.md docs/rendering.md docs/styling.md docs/server-data.md docs/ssr.md
 docs/accessibility.md docs/api.md docs/recipes.md docs/migrating.md

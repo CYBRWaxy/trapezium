@@ -44,12 +44,15 @@ import { Table } from "@trapezium/react"
 | `selection` | `boolean \| "single" \| "multiple" \| SelectionOptions` | `false` | `true` means multiple. |
 | `onSelectionChange` | `(ids: string[], rows: TRow[]) => void` | — | |
 | `export` | `boolean \| { filename?, clipboard?, scope?, fetchRows?, onExport? }` | `false` | CSV and clipboard. Contains the selected rows when there are any, and otherwise every matching row, not the page. `scope: "page"` narrows it; `fetchRows` supplies rows the table does not have and lets it write the file; `onExport` takes the whole thing over. |
+| `detail` | `DetailOptions<TRow>` | — | Detail rows: content that opens below a row, spanning the table. Open rows are `state.expanded`. See [rows](rows.md#detail-rows). |
 
 `SortOptions` — `{ multiple?: boolean, reset?: boolean \| Sort[] }`. `multiple` (default `true`) lets a shift-click, or "Then sort" in a column's menu, add a level; set it to `false` for a backend that orders by one column. `reset` (default `true`) is the reset control in the toolbar: `true` returns to no sort, an array names the sort the table rests in — the control returns there and hides while the table is already in it — and `false` leaves the control out.
 
 `PaginationOptions` — `{ mode?: "pages" \| "simple" \| "loadMore" \| "infinite", pageSize?: number, pageSizeOptions?: number[], siblings?: number }`
 
 `SelectionOptions` — `{ mode?: "single" \| "multiple", isSelectable?: (row, index) => boolean, onChange?: (ids, rows) => void }`. A row `isSelectable` refuses renders a disabled checkbox; the header checkbox and shift-click ranges skip it.
+
+`DetailOptions` — `{ render: (context: DetailContext) => node, canExpand?: (row) => boolean, keepMounted?: boolean, toggleOnRowClick?: boolean }`. `DetailContext` is `{ row, rowId, rowIndex, collapse() }`. `canExpand` (default every row) leaves a row without an expander, and keeps it closed whatever the state says. `keepMounted` (default `false`) keeps a closed detail in the document, hidden, once it has been opened, so it does not load again. `toggleOnRowClick` (default `false`) opens a row's detail from a click anywhere on it, except on a control inside it.
 
 ### Presentation
 
@@ -67,6 +70,7 @@ import { Table } from "@trapezium/react"
 | `unstyled` | `boolean` | `false` | Drop the default classes. |
 | `caption` | `ReactNode` | — | Visible caption. |
 | `aria-label` | `string` | — | Name the table for a screen reader. |
+| `id` | `string` | `useId()` in React, `"tpz"` elsewhere | Base for the ids the table gives its own elements, such as the detail row an expander points at. Unique per table when a page has several with detail rows. |
 
 ### Rendering
 
@@ -75,7 +79,7 @@ import { Table } from "@trapezium/react"
 | `types` | `Record<string, TypeDef>` | Custom types, merged over the built-ins. |
 | `format` | `Partial<FormatContext>` | Locale, timezone, currency, empty text. |
 | `rowHref` | `(row) => string` | Makes the leading cell a link. |
-| `onRowClick` | `(row, event) => void` | |
+| `onRowClick` | `(row, event) => void` | A click anywhere in the row except on a control inside it — a link, button, input, select, label, menu, or anything marked `data-tpz-interactive`. |
 | `rowClassName` | `(row, index) => string \| undefined` | |
 | `emptyState` | `ReactNode` | Replaces the default. A `#empty` slot in Vue; a node or string elsewhere. |
 | `emptyMessage` | `string` | Text for the default. |
@@ -157,8 +161,11 @@ Passed as `server` instead of `true`, when the rows come from a server. Both mem
   widths: Record<string, number>
   pinned: Record<string, "start" | "end">
   density: "compact" | "normal" | "relaxed"
+  expanded?: string[]   // rows whose detail is open; [] when absent
 }
 ```
+
+Keys added after 0.3.0 are optional in the type, so a state saved or written out by hand before they existed is still a `TableState`. Every table fills them in.
 
 `FilterOperator` — `eq` `ne` `contains` `notContains` `startsWith` `endsWith` `gt` `gte` `lt` `lte` `between` `in` `notIn` `empty` `notEmpty`
 
@@ -194,13 +201,19 @@ Everything below is exported from `@trapezium/core`, and re-exported from every 
 
 ### State
 
-`DEFAULT_STATE` · `createState(partial?)` · `toggleSort(state, key, additive?)` · `setSort` · `addSort(state, key, direction)` · `removeSort(state, key)` · `clearSort` · `resetSort(state, to?)` · `setFilter` · `addFilter` · `removeFilter` · `removeFilterAt` · `clearFilters` · `setColumnSearch(state, key, text)` · `columnSearchText(state, key)` · `setMatch` · `setSearch` · `setPage` · `setPageSize` · `setDensity` · `toggleSelection` · `setSelected` · `clearSelection` · `hideColumn` · `showColumn` · `toggleColumn` · `setOrder` · `setWidth` · `clearWidth` · `setPin` · `togglePin` · `resetView` · `isFiltering`
+`DEFAULT_STATE` · `createState(partial?)` · `toggleExpanded(state, id)` · `setExpanded(state, ids, open)` · `collapseAll(state)` · `isExpanded(state, id)` · `toggleSort(state, key, additive?)` · `setSort` · `addSort(state, key, direction)` · `removeSort(state, key)` · `clearSort` · `resetSort(state, to?)` · `setFilter` · `addFilter` · `removeFilter` · `removeFilterAt` · `clearFilters` · `setColumnSearch(state, key, text)` · `columnSearchText(state, key)` · `setMatch` · `setSearch` · `setPage` · `setPageSize` · `setDensity` · `toggleSelection` · `setSelected` · `clearSelection` · `hideColumn` · `showColumn` · `toggleColumn` · `setOrder` · `setWidth` · `clearWidth` · `setPin` · `togglePin` · `resetView` · `isFiltering`
 
 All pure `(state, …) => state`. Anything that changes which rows match resets `page` to 1.
 
 `toggleSort` cycles a column ascending, descending, off. With `additive` — a shift-click — the other levels are left alone: a new column joins the end of the sort, and one already in it turns over where it is. `addSort` adds a level in a named direction, or redirects one in place; `removeSort` takes one level out; `resetSort` puts the whole sort back to the one given, or to none.
 
 `setColumnSearch` is what typing into a column's header does: the text becomes a `contains` filter on that column, and an empty string removes it — but only if it was a search, so a column filtered some other way is left alone. `columnSearchText` reads it back.
+
+### Detail rows and row clicks
+
+`expandableIds(rows, rowIds, detail)` · `isDetailOpen(state, row, id, detail)` · `isInteractiveTarget(target, within)` · `INTERACTIVE_SELECTOR`
+
+`expandableIds` is the rows among those given that have a detail — what "expand all" opens. `isDetailOpen` is whether a row's detail shows: named in `state.expanded`, and allowed by `canExpand`. `isInteractiveTarget` is the rule every row gesture follows: true when the click landed on a control inside `within` rather than on the row.
 
 ### Sorting and header search
 
@@ -238,7 +251,7 @@ The text operators — `contains`, `notContains`, `startsWith`, `endsWith` — a
 
 `stateToSearchParams(state, options?, into?)` · `stateToQueryString` · `stateFromSearchParams` · `stateFromUrl` · `pickUrlState(state, options?)` · `applyStateToUrl(url, state, options?)` · `encodeFilters` · `decodeFilters` · `URL_KEYS` · `DEFAULT_URL_KEYS`
 
-`UrlOptions` — `{ include?: UrlStateKey[], prefix?: string, defaults?: Partial<TableState> }`. `defaults` are the table's own resting values where they differ from the library's — a page size of fifteen, say — and must be passed to every read and write so the two agree.
+`UrlOptions` — `{ include?: UrlStateKey[], prefix?: string, defaults?: Partial<TableState> }`. `UrlStateKey` is `sort` · `filters` · `match` · `search` · `page` · `pageSize` · `columns` · `pinned` · `density` · `selection` · `widths` · `expanded`; the last three are left out unless named in `include`. `defaults` are the table's own resting values where they differ from the library's — a page size of fifteen, say — and must be passed to every read and write so the two agree.
 
 `pickUrlState` returns the keys the URL carries, with defaults filled in — what to pass as a controlled `state` when the URL is the source of truth, so selection and widths stay with the table.
 
