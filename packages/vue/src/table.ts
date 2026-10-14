@@ -30,6 +30,7 @@ import type {
   PaginationOptions,
   PartialTableState,
   RowHeight,
+  RowInfo,
   SelectionInput,
   TableSlots,
   TableState,
@@ -166,7 +167,17 @@ export const Table = defineComponent({
     onCellEdit: { type: Function as PropType<(edit: CellEdit<AnyRow>) => void | Promise<unknown>>, default: undefined },
     /** What opens an editable cell with the mouse: `"doubleClick"` (the default) or `"click"`. */
     editTrigger: { type: String as PropType<"click" | "doubleClick">, default: undefined },
-    rowClassName: { type: Function as PropType<(row: AnyRow, index: number) => string | undefined>, default: undefined },
+    rowClassName: {
+      type: Function as PropType<(row: AnyRow, index: number, info?: RowInfo) => string | undefined>,
+      default: undefined,
+    },
+    /**
+     * One level of child rows: the id of the row this one belongs under, or
+     * `null`. Children are drawn under their parent, fold away with a toggle
+     * on it (`state.collapsed`), and stay with it through sorting, filtering
+     * and paging.
+     */
+    getParentId: { type: Function as PropType<(row: AnyRow) => string | null | undefined>, default: undefined },
     emptyMessage: { type: String, default: undefined },
 
     /**
@@ -365,6 +376,7 @@ export const Table = defineComponent({
       editTrigger: props.editTrigger,
       id: props.id,
       rowClassName: props.rowClassName,
+      getParentId: props.getParentId,
       emptyMessage: props.emptyMessage,
       buildHref: props.buildHref,
       className: props.className,

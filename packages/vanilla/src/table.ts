@@ -28,6 +28,7 @@ import {
   isDetailOpen,
   isInteractiveTarget,
   setExpanded,
+  toggleCollapsed,
   toggleExpanded,
   filterInputType,
   formatWithType,
@@ -94,6 +95,7 @@ import {
   type ResolvedColumn,
   type ResolvedSelection,
   type RowHeight,
+  type RowInfo,
   type SelectOption,
   type SelectionInput,
   type ServerSource,
@@ -228,7 +230,17 @@ export type TableOptions<TRow extends AnyRow = AnyRow> = {
    * a button, an input, a label or a menu inside the row is left to itself.
    */
   onRowClick?: (row: TRow, event: MouseEvent) => void
-  rowClassName?: (row: TRow, index: number) => string | undefined
+  /** Extra class names per row. With child rows, `info` says where the row sits. */
+  rowClassName?: (row: TRow, index: number, info?: RowInfo) => string | undefined
+
+  /**
+   * One level of child rows: the id of the row this one belongs under, or
+   * `null`. Children are drawn under their parent with a toggle on the parent
+   * that folds them away (`state.collapsed`), stay with it through sorting,
+   * filtering and paging — pages and totals count parents — and are selected,
+   * edited and exported like any other row, under their parent.
+   */
+  getParentId?: (row: TRow) => string | null | undefined
 
   /**
    * Detail rows: content that opens below a row and spans the table's width.
@@ -387,6 +399,8 @@ export function createTable<TRow extends AnyRow>(
   */
   let renderedRows: readonly TRow[] = []
   let renderedIds: string[] = []
+  /** With child rows, where each of those sits. */
+  let renderedInfo: RowInfo[] | undefined
   /** Of those, the ones that may be selected — what the header checkbox and a shift-range act on. */
   let renderedSelectable: readonly string[] = []
   /**
@@ -765,6 +779,7 @@ export function createTable<TRow extends AnyRow>(
       accumulate: pagination?.mode === "infinite" || pagination?.mode === "loadMore",
       reveal: pagination ? reveal : undefined,
       getRowId: settings.getRowId,
+      getParentId: settings.getParentId,
     })
 
     return { columns: visible, hidden, pagination, ...result }
@@ -857,7 +872,7 @@ export function createTable<TRow extends AnyRow>(
   }
 
   function renderView(reveal: string | undefined): boolean {
-    const { columns, hidden, rows, total, pageCount, filtered, pagination, page } = current(reveal)
+    const { columns, hidden, rows, total, pageCount, filtered, pagination, page, info } = current(reveal)
     renderedEditable = hasEditableColumns(columns)
 
     // The page shown is the revealed row's, so the state says so from here on.
@@ -917,7 +932,8 @@ export function createTable<TRow extends AnyRow>(
     else table.removeAttribute("aria-label")
 
     if (navigable()) {
-      table.setAttribute("role", "grid")
+      // A table of parents and children is a tree grid, whose rows say their level.
+      table.setAttribute("role", info ? "treegrid" : "grid")
       table.setAttribute("aria-readonly", renderedEditable ? "false" : "true")
     } else {
       table.removeAttribute("role")
@@ -981,7 +997,7 @@ export function createTable<TRow extends AnyRow>(
         const added: HTMLElement[] = []
 
         for (let index = renderedRows.length; index < rows.length; index += 1) {
-          const tr = buildRow(rows[index]!, rowIds[index]!, index, build)
+          const tr = buildRow(rows[index]!, rowIds[index]!, index, build, info?.[index])
           added.push(tr)
           batch.append(tr)
         }
@@ -1001,6 +1017,7 @@ export function createTable<TRow extends AnyRow>(
         renderedNodes.push(...added)
         renderedRows = rows
         renderedIds = rowIds
+        renderedInfo = info
         renderedSelectable = selectable
       }
 
@@ -1063,7 +1080,7 @@ export function createTable<TRow extends AnyRow>(
       )
     }
 
-    const nodes = rows.map((row, index) => buildRow(row, rowIds[index]!, index, build))
+    const nodes = rows.map((row, index) => buildRow(row, rowIds[index]!, index, build, info?.[index]))
 
     // Each row, then its detail when it has one open or kept.
     const previousDetails = detailNodes
@@ -1089,6 +1106,7 @@ export function createTable<TRow extends AnyRow>(
 
     renderedRows = rows
     renderedIds = rowIds
+    renderedInfo = info
     renderedSelectable = selectable
     renderedNodes = nodes
     renderedSelection = new Set(state.selection)
@@ -1122,7 +1140,7 @@ export function createTable<TRow extends AnyRow>(
   }
 
   /** One row, built the same way whether the body is being filled or extended. */
-  function buildRow(row: TRow, id: string, index: number, build: RowBuild): HTMLElement {
+  function buildRow(row: TRow, id: string, index: number, build: RowBuild, info?: RowInfo): HTMLElement {
     const { columns, types, format, cls, selection, pinEdges } = build
     const selectionMode = selection?.mode
     const selected = state.selection.includes(id)
@@ -1131,13 +1149,19 @@ export function createTable<TRow extends AnyRow>(
     const open = isDetailOpen(state, row, id, detail)
     const togglesDetail = expandable && detail?.toggleOnRowClick === true
 
+    const treegrid = info !== undefined && navigable()
     const tr = el("tr", {
-      class: cls("row", settings.rowClassName?.(row, index)),
+      class: cls("row", settings.rowClassName?.(row, index, info)),
       "data-selected": selected ? "true" : undefined,
       "data-clickable": settings.onRowClick || togglesDetail ? "true" : undefined,
       "data-expanded": open ? "true" : undefined,
       "data-focused": state.focus?.rowId === id ? "true" : undefined,
       "data-row-id": id,
+      "data-depth": info?.depth,
+      "data-parent": info && info.childCount > 0 ? "true" : undefined,
+      "data-context": info?.context ? "true" : undefined,
+      "aria-level": treegrid ? info.depth + 1 : undefined,
+      "aria-expanded": treegrid && info.childCount > 0 ? String(!(state.collapsed ?? []).includes(id)) : undefined,
     })
 
     // Only the active cell is in the tab order; the rest are reached by arrow.
@@ -1244,7 +1268,7 @@ export function createTable<TRow extends AnyRow>(
       })
       if (column.width) cell.style.width = `${String(column.width)}px`
 
-      fillCell(cell, row, id, index, column, columnIndex, build)
+      fillCell(cell, row, id, index, column, columnIndex, build, info)
       tr.append(cell)
     })
 
@@ -1270,6 +1294,7 @@ export function createTable<TRow extends AnyRow>(
     column: ResolvedColumn<TRow, Node | string>,
     columnIndex: number,
     build: Pick<RowBuild, "types" | "format">,
+    info?: RowInfo,
   ) {
     const editKey = editId(id, column.key)
     const pending = pendingEdits.has(editKey)
@@ -1314,6 +1339,13 @@ export function createTable<TRow extends AnyRow>(
       host = fit
     }
 
+    /*
+      With child rows the leading cell carries the row's place in the tree: a
+      toggle for a parent, the same width of nothing for a row on its own, and
+      an indent with a connector for a child.
+    */
+    if (columnIndex === 0 && info) host.appendChild(treeSlot(id, index, info))
+
     if (columnIndex === 0 && settings.rowHref) {
       const link = el("a", { class: "tpz-link tpz-lead", href: settings.rowHref(row) })
       link.append(node)
@@ -1325,6 +1357,35 @@ export function createTable<TRow extends AnyRow>(
     if (failed !== undefined) cell.append(el("span", { class: "tpz-sr", text: `, not saved: ${failed}` }))
   }
 
+  /** The start of a leading cell in a table with child rows. */
+  function treeSlot(id: string, index: number, info: RowInfo): HTMLElement {
+    const slot = el("span", { class: "tpz-tree", "data-depth": info.depth })
+    if (info.childCount === 0) return slot
+
+    const folded = (state.collapsed ?? []).includes(id)
+    const count = info.childCount
+    const button = el(
+      "button",
+      {
+        type: "button",
+        class: "tpz-tree-toggle",
+        tabindex: navigable() ? -1 : undefined,
+        "aria-expanded": folded ? "false" : "true",
+        "aria-label": `${folded ? "Show" : "Hide"} ${String(count)} child ${count === 1 ? "row" : "rows"} of row ${String(index + 1)}`,
+      },
+      [icon("chevronRight", 12)],
+    )
+    button.addEventListener("click", (event) => {
+      event.stopPropagation()
+      const hadFocus = currentDocument().activeElement === button
+      update(toggleCollapsed(state, id))
+      // The rows were drawn again; the press stays with the same parent's toggle.
+      if (hadFocus) cellElement(id, undefined)?.querySelector<HTMLElement>(".tpz-tree-toggle")?.focus()
+    })
+    slot.append(button)
+    return slot
+  }
+
   /** Redraws one cell where it is, if it is on screen. */
   function refillCell(rowId: string, key: string) {
     const index = renderedIds.indexOf(rowId)
@@ -1332,7 +1393,7 @@ export function createTable<TRow extends AnyRow>(
     const column = headerColumns.find((entry) => entry.key === key)
     const cell = cellElement(rowId, key)
     if (row === undefined || !column || !cell) return
-    fillCell(cell, row, rowId, index, column, headerColumns.indexOf(column), { types: registry(), format: formatting() })
+    fillCell(cell, row, rowId, index, column, headerColumns.indexOf(column), { types: registry(), format: formatting() }, renderedInfo?.[index])
   }
 
   /* ── Editing ───────────────────────────────────────────────────────────── */
@@ -1834,6 +1895,7 @@ export function createTable<TRow extends AnyRow>(
       detail: Boolean(settings.detail),
       navigable: navigable(),
       editable: renderedEditable,
+      tree: Boolean(settings.getParentId),
       href: Boolean(settings.rowHref),
       click: Boolean(settings.onRowClick),
       rowClass: Boolean(settings.rowClassName),

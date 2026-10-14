@@ -985,6 +985,78 @@
   box-shadow: inset 2px 0 0 var(--tpz-danger);
 }
 
+/* ── Child rows ────────────────────────────────────────────────────────── */
+
+/*
+  The slot at the start of a leading cell: a parent's toggle, the same width
+  of nothing for a row on its own so every row's text starts in one place, and
+  for a child an indent of one slot with a connector drawn into it.
+*/
+.tpz-tree {
+  position: relative;
+  display: inline-flex;
+  width: 1.25rem;
+  height: var(--tpz-text-cell-leading);
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  margin-inline-end: 0.25rem;
+  vertical-align: top;
+}
+
+.tpz-tree[data-depth="1"] {
+  margin-inline-start: 1.25rem;
+}
+
+.tpz-tree[data-depth="1"]::before {
+  position: absolute;
+  top: 0;
+  left: 0.5rem;
+  width: 0.5rem;
+  height: 55%;
+  border-bottom: 1px solid var(--tpz-border);
+  border-left: 1px solid var(--tpz-border);
+  border-bottom-left-radius: 3px;
+  content: "";
+}
+
+.tpz-tree-toggle {
+  display: inline-flex;
+  width: 1.125rem;
+  height: 1.125rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: calc(var(--tpz-radius) - 4px);
+  background: none;
+  padding: 0;
+  color: var(--tpz-muted-fg);
+  cursor: pointer;
+}
+
+.tpz-tree-toggle:hover {
+  background: var(--tpz-accent);
+  color: var(--tpz-fg);
+}
+
+.tpz-tree-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--tpz-focus);
+}
+
+.tpz-tree-toggle > svg {
+  transition: transform var(--tpz-transition);
+}
+
+.tpz-tree-toggle[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+
+/* A parent shown only because one of its children matched: there, but quieter. */
+.tpz-tbody .tpz-tr[data-context="true"] > .tpz-td {
+  color: var(--tpz-muted-fg);
+}
+
 /* ── Detail rows ───────────────────────────────────────────────────────── */
 
 /* The expander column is the selection column's twin: narrow, frozen, centred. */

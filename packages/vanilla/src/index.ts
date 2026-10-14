@@ -49,6 +49,10 @@ export {
   toggleExpanded,
   clearFocus,
   focusCell,
+  isCollapsed,
+  parentIdsWithChildren,
+  setCollapsed,
+  toggleCollapsed,
   copyText,
   downloadText,
 } from "@trapezium/core"
@@ -70,6 +74,7 @@ export type {
   HeaderSearchOptions,
   PaginationOptions,
   PartialTableState,
+  RowInfo,
   SelectionInput,
   SelectionOptions,
   SelectOption,
