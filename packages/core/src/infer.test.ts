@@ -50,6 +50,19 @@ describe("inferType", () => {
     expect(inferType("plan", values)).toBe("badge")
   })
 
+  it("does not guess a category from one page of a column", () => {
+    // One page of a server-paged table: a few values on this page says nothing
+    // about the next, and the column would flip between text and badges.
+    const values = Array.from({ length: 30 }, (_, index) => (index % 3 === 0 ? "active" : "paused"))
+    expect(inferType("plan", values, { partial: true })).toBe("text")
+    expect(inferColumns(values.map((plan) => ({ plan })), { partial: true })[0]?.type).toBe("text")
+  })
+
+  it("still reads a category from the key on one page", () => {
+    expect(inferType("status", ["open", "closed"], { partial: true })).toBe("badge")
+    expect(inferType("plan", ["2026-01-01"], { partial: true })).toBe("date")
+  })
+
   it("does not call a handful of names a category", () => {
     expect(inferType("name", ["Ada", "Tom", "Jo"])).toBe("text")
   })

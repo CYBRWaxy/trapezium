@@ -1019,6 +1019,28 @@ describe("every combination of view and export", () => {
   }
 })
 
+describe("inferring types from one page", () => {
+  // Twenty rows of two plans reads as a category, but only the whole data set
+  // could say so; a server page could be followed by fifty plans, and the same
+  // column would switch between text and badges as the user paged.
+  const page = Array.from({ length: 20 }, (_, index) => ({ id: String(index), plan: index % 2 ? "pro" : "free" }))
+
+  it("guesses a badge from all the data", () => {
+    createTable(host, { data: page })
+    expect(host.querySelector("tbody td .tpz-badge")).not.toBeNull()
+  })
+
+  it("does not guess one from a server page", () => {
+    createTable(host, { data: page, total: 480, server: true })
+    expect(host.querySelector("tbody td .tpz-badge")).toBeNull()
+  })
+
+  it("still takes a badge from a column named for one", () => {
+    createTable(host, { data: page.map((row) => ({ ...row, status: row.plan })), total: 480, server: true })
+    expect(host.querySelector("tbody td .tpz-badge")).not.toBeNull()
+  })
+})
+
 describe("server-side data, made whole", () => {
   const STATUSES = [
     { value: "draft", label: "Draft" },

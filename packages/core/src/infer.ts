@@ -49,6 +49,23 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const URL = /^https?:\/\/\S+$/i
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+export type InferTypeOptions = {
+  /**
+   * The values are a slice of the column rather than all of it — one page of a
+   * server-paged table. Default `false`.
+   *
+   * Most guesses hold for any slice: a page of dates is still dates. One does
+   * not. "A handful of distinct values" reads a short string column as a
+   * category and renders it as a `badge`, and on one page that is a fact about
+   * the page — the next page, or the same page filtered, can see more values
+   * or fewer, and the column would switch between plain text and badges as the
+   * user moved through it. So with `partial` that guess is not made and the
+   * column is `text`. A key that names a category, such as `status`, is still
+   * a `badge`, because the name does not change from page to page.
+   */
+  partial?: boolean
+}
+
 /**
  * The type of a column, from its key and a sample of its values.
  *
@@ -57,7 +74,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  * `text`, because an empty column formatted as a date would start lying the
  * moment real data arrived.
  */
-export function inferType(key: string, values: unknown[]): string {
+export function inferType(key: string, values: unknown[], options: InferTypeOptions = {}): string {
   const present = values.filter((value) => !isEmpty(value))
 
   for (const [pattern, type] of KEY_HINTS) {
@@ -100,8 +117,10 @@ export function inferType(key: string, values: unknown[]): string {
       category, not free text — a state, a plan, a role. Rendering it as a chip
       is what makes an inferred table look designed rather than dumped. The
       thresholds are deliberately conservative: with fewer than twenty rows,
-      "few distinct values" is just as likely to be coincidence.
+      "few distinct values" is just as likely to be coincidence. And it needs
+      the whole column — see `InferTypeOptions.partial`.
     */
+    if (options.partial) return "text"
     const distinct = new Set(strings)
     if (strings.length >= 20 && distinct.size <= 6 && longest <= 24) return "badge"
 
@@ -129,6 +148,8 @@ export type InferColumnsOptions = {
   exclude?: string[]
   /** Keys to include and order explicitly. Everything else is dropped. */
   include?: string[]
+  /** The rows are one page of a larger set. See `InferTypeOptions.partial`. Default `false`. */
+  partial?: boolean
 }
 
 /**
@@ -166,6 +187,7 @@ export function inferColumns<TRow extends AnyRow>(
     type: inferType(
       key,
       sample.map((row) => (row as AnyRow)[key]),
+      { partial: options.partial ?? false },
     ),
   }))
 }

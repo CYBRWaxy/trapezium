@@ -53,6 +53,13 @@ export type ResolveColumnsOptions<TRow, TNode> = {
    * A column's own `headerSearch` wins over this either way.
    */
   headerSearch?: boolean
+  /**
+   * The rows are one page of a server-paged table, not the whole data set.
+   * Inference then makes no guess that depends on seeing every row, so a
+   * column does not change type as the user pages or filters — see
+   * `InferTypeOptions.partial`. Default `false`.
+   */
+  server?: boolean
 }
 
 export type ResolvedColumns<TRow, TNode> = {
@@ -138,7 +145,7 @@ function resolveColumn<TRow extends AnyRow, TNode>(
   const key = String(merged.key)
   const accessor = merged.accessor ?? ((row: TRow) => getPath(row, key))
 
-  const typeName = merged.type ?? inferOwnType(key, accessor, sample, types)
+  const typeName = merged.type ?? inferOwnType(key, accessor, sample, types, options.server === true)
   const type = types.get(typeName)
 
   const filter = resolveFilter(merged.filter, type)
@@ -200,9 +207,10 @@ function inferOwnType<TRow extends AnyRow>(
   accessor: (row: TRow) => unknown,
   sample: readonly TRow[],
   types: TypeRegistry,
+  partial: boolean,
 ): string {
   const values = sample.map(accessor)
-  const inferred = inferType(key, values)
+  const inferred = inferType(key, values, { partial })
   return types.has(inferred) ? inferred : "text"
 }
 

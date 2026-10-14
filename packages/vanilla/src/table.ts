@@ -652,6 +652,7 @@ export function createTable<TRow extends AnyRow>(
       resizable: settings.resizable,
       reorderable: settings.reorderable,
       headerSearch: resolveHeaderSearch(settings.headerSearch).enabled,
+      server: Boolean(settings.server),
     })
 
     const result = getRows<TRow, Node | string>({

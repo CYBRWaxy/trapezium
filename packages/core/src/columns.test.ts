@@ -58,6 +58,19 @@ describe("defaults", () => {
     expect(visible[0]?.header).toBe("Name")
   })
 
+  it("infers the same type on every page of a server-paged table", () => {
+    // Twenty rows of two values is a badge column when it is all the data, and
+    // only a page when the server is paging — where the next page could hold
+    // fifty distinct values.
+    const page = Array.from({ length: 20 }, (_, index) => ({ plan: index % 2 === 0 ? "free" : "pro" }))
+    const resolvePlan = (server: boolean) =>
+      resolveColumns<{ plan: string }, unknown>({ rows: page, state: createState(), types: defaultTypeRegistry, server })
+        .visible[0]?.type
+
+    expect(resolvePlan(false)).toBe("badge")
+    expect(resolvePlan(true)).toBe("text")
+  })
+
   it("lets an explicit type win over inference", () => {
     expect(resolve([{ key: "total_cents", type: "number" }]).visible[0]?.type).toBe("number")
   })

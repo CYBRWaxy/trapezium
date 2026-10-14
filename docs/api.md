@@ -224,7 +224,7 @@ The text operators — `contains`, `notContains`, `startsWith`, `endsWith` — a
 
 ### Columns
 
-`resolveColumns(options)` · `moveColumn(keys, key, direction)` · `reorderColumn(keys, key, toIndex)` · `reorderColumnTo(keys, dragged, target, "before" | "after")` · `pruneState(state, keys)` · `inferColumns(rows, options?)` · `inferType(key, values)` · `distinctValues(values, limit?)`
+`resolveColumns(options)` · `moveColumn(keys, key, direction)` · `reorderColumn(keys, key, toIndex)` · `reorderColumnTo(keys, dragged, target, "before" | "after")` · `pruneState(state, keys)` · `inferColumns(rows, options?)` · `inferType(key, values, { partial? })` · `distinctValues(values, limit?)`
 
 ### Types
 

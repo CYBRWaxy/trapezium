@@ -131,6 +131,11 @@ Custom type:
 
 `normalise` reduces a value to something orderable; sorting and filtering both use it.
 
+Inference: the key first (status/state → badge, *_id → id, email, *_url, avatar → image, …), then
+the values. A string column with ≥20 rows and ≤6 distinct values becomes a badge — except in a
+`server` table, where the rows are one page and that guess would change as the user paged or
+filtered, so the column is text. Set `type: "badge"` to have badges there.
+
 ## Filters
 
 Kinds: text, set (checkbox list of values present in the data), range, date, boolean, none.

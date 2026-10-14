@@ -152,6 +152,7 @@ export function useTable<TRow extends AnyRow>(props: TableProps<TRow>) {
         resizable: props.resizable,
         reorderable: props.reorderable,
         headerSearch: headerSearch.enabled,
+        server: Boolean(server),
       }),
     [
       columnInput,
@@ -164,6 +165,7 @@ export function useTable<TRow extends AnyRow>(props: TableProps<TRow>) {
       props.resizable,
       props.reorderable,
       headerSearch.enabled,
+      Boolean(server),
     ],
   )
 

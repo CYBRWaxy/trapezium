@@ -107,6 +107,15 @@ describe("server-side data", () => {
       expect(labels).toEqual(["pro", "free", "enterprise"])
     })
   })
+
+  it("does not guess a column is a badge from one page", () => {
+    // Twenty rows of two plans reads as a category, but only the whole data
+    // set could say so; a server page could be followed by fifty plans.
+    const page = Array.from({ length: 20 }, (_, index) => ({ id: String(index), name: "Ada", plan: index % 2 ? "pro" : "free" }))
+    const node = mount({ data: page, total: 480, server: true })
+
+    expect(node.querySelector("tbody td .tpz-badge")).toBeNull()
+  })
 })
 
 describe("options that change while the table is running", () => {

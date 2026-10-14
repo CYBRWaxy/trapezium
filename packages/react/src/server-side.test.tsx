@@ -348,3 +348,26 @@ describe("telling the table once where the answers come from", () => {
     expect(server.distinct).not.toHaveBeenCalled()
   })
 })
+
+describe("inferring types from one page", () => {
+  // Twenty rows of two plans reads as a category, but only the whole data set
+  // could say so; a server page could be followed by fifty plans, and the same
+  // column would switch between text and badges as the user paged.
+  const plans = Array.from({ length: 20 }, (_, index) => ({ id: String(index), plan: index % 2 ? "pro" : "free" }))
+
+  it("guesses a badge from all the data", () => {
+    const { container } = render(<Table data={plans} />)
+    expect(container.querySelector("tbody td .tpz-badge")).not.toBeNull()
+  })
+
+  it("does not guess one from a server page", () => {
+    const { container } = render(<Table data={plans} total={480} server />)
+    expect(container.querySelector("tbody td .tpz-badge")).toBeNull()
+  })
+
+  it("still takes a badge from a column named for one", () => {
+    const rows = plans.map((row) => ({ ...row, status: row.plan }))
+    const { container } = render(<Table data={rows} total={480} server />)
+    expect(container.querySelector("tbody td .tpz-badge")).not.toBeNull()
+  })
+})

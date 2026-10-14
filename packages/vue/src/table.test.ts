@@ -296,6 +296,16 @@ describe("server-side data", () => {
       expect(labels).toEqual(["pro", "free", "enterprise"])
     })
   })
+
+  it("does not guess a column is a badge from one page", async () => {
+    // Twenty rows of two plans reads as a category, but only the whole data
+    // set could say so; a server page could be followed by fifty plans.
+    const page = Array.from({ length: 20 }, (_, index) => ({ id: String(index), plan: index % 2 ? "pro" : "free" }))
+    const host = mount(defineComponent(() => () => h(Table, { data: page, total: 480, server: true })))
+    await nextTick()
+
+    expect(host.querySelector("tbody td .tpz-badge")).toBeNull()
+  })
 })
 
 describe("props that change after the first render", () => {

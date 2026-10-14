@@ -81,7 +81,7 @@ export {
 export type { Comparable, TypeDef, TypeRegistry } from "./registry.js"
 
 export { distinctValues, inferColumns, inferType } from "./infer.js"
-export type { InferColumnsOptions } from "./infer.js"
+export type { InferColumnsOptions, InferTypeOptions } from "./infer.js"
 
 export {
   moveColumn,

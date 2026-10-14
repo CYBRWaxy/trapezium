@@ -55,6 +55,8 @@ A hint that the data contradicts is dropped — a column called `image` holding 
 
 **One piece of magic**, because it is what makes an inferred table look designed: a short string column with at least twenty rows and no more than six distinct values is a category, and renders as a `badge`.
 
+Not in a `server` table. There the rows are one page, and how many distinct values a page holds says nothing about the column: the next page, or the same page filtered, could show more or fewer, and the column would switch between text and badges as the user moved through it. A server table's string columns are `text` unless the key names a category (`status`) or the column says `type: "badge"`.
+
 Anything else, and anything mixed, is `text`.
 
 Money is deliberately *not* guessed from names like `amount`, `price` or `total`. Being wrong there means a column of quantities suddenly formatted as dollars, which is worse than plain numbers. State it: `{ key: "amount", type: "currency" }`.
